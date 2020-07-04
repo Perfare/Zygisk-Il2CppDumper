@@ -1,0 +1,23 @@
+ext {
+    moduleId = "il2cppdumper" // FIXME replace with yours
+    riruApiVersion = 7
+    riruMinVersionName = "v21.2"
+
+    moduleProp = [
+            name       : "Il2CppDumper", // FIXME replace with yours
+            version    : "v1.0", // FIXME replace with yours
+            versionCode: "1", // FIXME replace with yours
+            author     : "Perfare", // FIXME replace with yours
+            description: "Il2CppDumper Riru version.", // FIXME replace with yours
+            api        : riruApiVersion
+    ]
+
+    magiskModuleProp = [
+            id         : "riru-${moduleId.replace('_', '-')}",
+            name       : "Riru - ${moduleProp['name']}",
+            version    : moduleProp['version'],
+            versionCode: moduleProp['versionCode'],
+            author     : moduleProp['author'],
+            description: moduleProp['description']
+    ]
+}

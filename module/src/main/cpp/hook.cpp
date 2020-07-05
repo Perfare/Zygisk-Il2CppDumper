@@ -105,7 +105,7 @@ void *hack_thread(void *arg) {
     while (!il2cpp_handle) {
         sleep(1);
     }
-    sleep(2);
+    sleep(5);
     il2cpp_dump(il2cpp_handle, game_data_dir);
     return NULL;
 }

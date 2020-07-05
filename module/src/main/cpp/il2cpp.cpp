@@ -46,32 +46,35 @@ void process_maps(uint32_t typeDefinitionsCount, uint64_t *il2cpp_addr,
     uint64_t data_start = 0;
     uint64_t data_end = 0;
 
-    uint64_t bss_start = 0;
-    uint64_t bss_end = 0;
-
     FILE *fp = fopen("/proc/self/maps", "r");
     if (fp != nullptr) {
         while (fgets(line, sizeof(line), fp)) {
-            if (!flag && strstr(line, "libil2cpp.so")) {
+            strcpy(path, "");
+            sscanf(line, "%" PRIx64"-%" PRIx64" %s %*" PRIx64" %*x:%*x %*u %s\n",
+                   &start, &end, flags, path);
+            if (!flag && strstr(path, "libil2cpp.so")) {
                 flag = true;
-                char *pch = strtok(line, "-");
-                *il2cpp_addr = strtoull(pch, nullptr, 16);
+                *il2cpp_addr = start;
             }
             if (flag) {
-                sscanf(line, "%" PRIx64"-%" PRIx64" %s %*" PRIx64" %*x:%*x %*u %s\n",
-                       &start, &end, flags, path);
-                if (strcmp(flags, "rw-p") == 0 && strstr(path, "libil2cpp.so")) {
-                    LOGD("data start %" PRIx64"", start);
-                    LOGD("data end %" PRIx64"", end);
-                    data_start = start;
-                    data_end = end;
-                }
-                if (strcmp(path, "[anon:.bss]") == 0) {
-                    LOGD("bss start %" PRIx64"", start);
-                    LOGD("bss end %" PRIx64"", end);
-                    bss_start = start;
-                    bss_end = end;
-                    break;
+                if (flags[1] == 'w') {
+                    if (data_end == 0) {
+                        data_start = start;
+                        data_end = end;
+                        LOGD("data start %" PRIx64"", data_start);
+                    } else {
+                        if (data_end != start) {
+                            LOGD("data end %" PRIx64"", data_end);
+                            break;
+                        } else {
+                            data_end = end;
+                        }
+                    }
+                } else {
+                    if (data_end != 0) {
+                        LOGD("data end %" PRIx64"", data_end);
+                        break;
+                    }
                 }
             }
         }
@@ -93,11 +96,10 @@ void process_maps(uint32_t typeDefinitionsCount, uint64_t *il2cpp_addr,
             //LOGD("now2: %" PRIx64"", metadataUsages_addr);
             if (metadataUsages_addr >= data_start && metadataUsages_addr <= data_end) {
                 flag = true;
-                for (int i = 0; i < 5000; ++i) {
+                for (int i = 0; i < typeDefinitionsCount + 2000; ++i) {
                     auto pointer_addr = (uint64_t) metadataRegistration->metadataUsages[i];
                     //LOGD("now3: %" PRIx64"", pointer_addr);
-                    if ((pointer_addr < bss_start || pointer_addr > bss_end) &&
-                        (pointer_addr < data_start || pointer_addr > data_end)) {
+                    if (pointer_addr < data_start || pointer_addr > data_end) {
                         flag = false;
                         break;
                     }

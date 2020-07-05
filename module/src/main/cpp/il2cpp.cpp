@@ -32,18 +32,36 @@ void init_il2cpp_api() {
 #undef DO_API
 }
 
-//TODO 强化搜索，针对多个data字段
+bool check_range_1(const std::vector<std::pair<uint64_t, uint64_t>> &dataSection, uint64_t addr) {
+    for (auto &i : dataSection) {
+        if (addr >= i.first && addr <= i.second) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool check_range_2(const std::vector<std::pair<uint64_t, uint64_t>> &dataSection,
+                   void **const *metadataUsages, uint32_t count) {
+    for (int i = 0; i < count; ++i) {
+        auto addr = (uint64_t) metadataUsages[i];
+        if (!check_range_1(dataSection, addr)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void process_maps(uint32_t typeDefinitionsCount, uint64_t *il2cpp_addr,
                   uint64_t *metadataregistration_addr) {
     char line[1024];
-
-    bool flag = false;
     uint64_t start = 0;
     uint64_t end = 0;
     char flags[5];
     char path[PATH_MAX];
+    bool flag = false;
 
-    uint64_t data_start = 0;
+    std::vector<std::pair<uint64_t, uint64_t>> dataSection;
     uint64_t data_end = 0;
 
     FILE *fp = fopen("/proc/self/maps", "r");
@@ -57,59 +75,47 @@ void process_maps(uint32_t typeDefinitionsCount, uint64_t *il2cpp_addr,
                 *il2cpp_addr = start;
             }
             if (flag) {
-                if (flags[1] == 'w') {
-                    if (data_end == 0) {
-                        data_start = start;
-                        data_end = end;
-                        LOGD("data start %" PRIx64"", data_start);
-                    } else {
-                        if (data_end != start) {
-                            LOGD("data end %" PRIx64"", data_end);
-                            break;
-                        } else {
-                            data_end = end;
-                        }
-                    }
+                if (data_end == 0) {
+                    data_end = end;
                 } else {
-                    if (data_end != 0) {
-                        LOGD("data end %" PRIx64"", data_end);
+                    if (data_end != start) {
                         break;
+                    } else {
+                        data_end = end;
                     }
+                }
+                if (flags[1] == 'w') {
+                    dataSection.emplace_back(std::make_pair(start, end));
                 }
             }
         }
         fclose(fp);
     }
 
-    auto search_addr = data_start;
-    while (search_addr < data_end) {
-#ifdef __LP64__
-        search_addr += 8;
-#else
-        search_addr += 4;
-#endif
-        auto metadataRegistration = (Il2CppMetadataRegistration *) search_addr;
-        if (metadataRegistration &&
-            metadataRegistration->typeDefinitionsSizesCount == typeDefinitionsCount) {
-            //LOGD("now: %" PRIx64"", search_addr - *il2cpp_addr);
-            auto metadataUsages_addr = (uint64_t) metadataRegistration->metadataUsages;
-            //LOGD("now2: %" PRIx64"", metadataUsages_addr);
-            if (metadataUsages_addr >= data_start && metadataUsages_addr <= data_end) {
-                flag = true;
-                for (int i = 0; i < typeDefinitionsCount + 2000; ++i) {
-                    auto pointer_addr = (uint64_t) metadataRegistration->metadataUsages[i];
-                    //LOGD("now3: %" PRIx64"", pointer_addr);
-                    if (pointer_addr < data_start || pointer_addr > data_end) {
-                        flag = false;
-                        break;
+    for (auto &i : dataSection) {
+        auto search_addr = i.first;
+        auto search_end = i.second - sizeof(Il2CppMetadataRegistration);
+        while (search_addr < search_end) {
+            auto metadataRegistration = (Il2CppMetadataRegistration *) search_addr;
+            if (metadataRegistration &&
+                metadataRegistration->typeDefinitionsSizesCount == typeDefinitionsCount) {
+                //LOGD("now: %" PRIx64"", search_addr - *il2cpp_addr);
+                auto metadataUsages_addr = (uint64_t) metadataRegistration->metadataUsages;
+                //LOGD("now2: %" PRIx64"", metadataUsages_addr);
+                if (check_range_1(dataSection, metadataUsages_addr)) {
+                    if (check_range_2(dataSection, metadataRegistration->metadataUsages,
+                                      typeDefinitionsCount + 2000)) {
+                        LOGD("metadataregistration_rva: %" PRIx64"", search_addr - *il2cpp_addr);
+                        *metadataregistration_addr = search_addr;
+                        return;
                     }
                 }
-                if (flag) {
-                    LOGD("metadataregistration_rva: %" PRIx64"", search_addr - *il2cpp_addr);
-                    *metadataregistration_addr = search_addr;
-                    break;
-                }
             }
+#ifdef __LP64__
+            search_addr += 8;
+#else
+            search_addr += 4;
+#endif
         }
     }
 }
@@ -395,6 +401,7 @@ void il2cpp_dump(void *handle, char *outDir) {
     LOGI("il2cpp_addr: %" PRIx64"", il2cpp_baseaddr);
     LOGI("metadataregistration_addr: %" PRIx64"", metadataregistration_addr);
     if (metadataregistration_addr > 0) {
+        LOGI("dumping...");
         auto *metadataRegistration = (Il2CppMetadataRegistration *) metadataregistration_addr;
         for (int i = 0; i < metadataRegistration->typesCount; ++i) {
             auto type = metadataRegistration->types[i];

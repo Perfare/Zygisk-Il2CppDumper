@@ -10,8 +10,7 @@ Riru版Il2CppDumper，在游戏运行时dump数据，用于绕过保护，加密
 6. 启动游戏，会在`/data/data/GamePackageName/files/`目录下生成`dump.cs`
 
 ## TODO
-- [x] 强化搜索
+- [x] 使用反射进行dump
 - [ ] 完善dump.cs输出
-- [ ] 2018.3.0f2(24.1)及以上版本使用`il2cpp_image_get_class`
 - [ ] 泛型相关输出
 - [ ] 生成IDA脚本，头文件

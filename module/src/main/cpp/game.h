@@ -6,7 +6,11 @@
 #define RIRU_IL2CPPDUMPER_GAME_H
 
 #define GamePackageName "com.game.packagename"
-#define UnityVersion 2017.2.1f1
+#define UnityVersion 5.6.0f3
+
+// 2018.3.0f2(v24.1) and up enable it
+//#define VersionAboveV24
+
 // UnityVersion Compatible list
 // <= 5.3.1f1 not support
 // 5.3.2f1     | 5.3.2f1                   | v19

@@ -22,7 +22,7 @@
 #undef DO_API
 
 static void *il2cpp_handle = nullptr;
-static uint64_t il2cpp_baseaddr = 0;
+static uint64_t il2cpp_base = 0;
 
 void init_il2cpp_api() {
 #define DO_API(r, n, p) n = (r (*) p)dlsym(il2cpp_handle, #n)
@@ -32,92 +32,23 @@ void init_il2cpp_api() {
 #undef DO_API
 }
 
-bool check_range_1(const std::vector<std::pair<uint64_t, uint64_t>> &dataSection, uint64_t addr) {
-    for (auto &i : dataSection) {
-        if (addr >= i.first && addr <= i.second) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool check_range_2(const std::vector<std::pair<uint64_t, uint64_t>> &dataSection,
-                   void **const *metadataUsages, uint32_t count) {
-    for (int i = 0; i < count; ++i) {
-        auto addr = (uint64_t) metadataUsages[i];
-        if (!check_range_1(dataSection, addr)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-void process_maps(uint32_t typeDefinitionsCount, uint64_t *il2cpp_addr,
-                  uint64_t *metadataregistration_addr) {
+uint64_t get_module_base(const char *module_name) {
+    uint64_t addr = 0;
+    char *pch;
     char line[1024];
-    uint64_t start = 0;
-    uint64_t end = 0;
-    char flags[5];
-    char path[PATH_MAX];
-    bool flag = false;
-
-    std::vector<std::pair<uint64_t, uint64_t>> dataSection;
-    uint64_t data_end = 0;
 
     FILE *fp = fopen("/proc/self/maps", "r");
     if (fp != nullptr) {
         while (fgets(line, sizeof(line), fp)) {
-            strcpy(path, "");
-            sscanf(line, "%" PRIx64"-%" PRIx64" %s %*" PRIx64" %*x:%*x %*u %s\n",
-                   &start, &end, flags, path);
-            if (!flag && strstr(path, "libil2cpp.so")) {
-                flag = true;
-                *il2cpp_addr = start;
-            }
-            if (flag) {
-                if (data_end == 0) {
-                    data_end = end;
-                } else {
-                    if (data_end != start) {
-                        break;
-                    } else {
-                        data_end = end;
-                    }
-                }
-                if (flags[1] == 'w') {
-                    dataSection.emplace_back(std::make_pair(start, end));
-                }
+            if (strstr(line, module_name) && strstr(line, "r-xp")) {
+                pch = strtok(line, "-");
+                addr = strtoull(pch, nullptr, 16);
+                break;
             }
         }
         fclose(fp);
     }
-
-    for (auto &i : dataSection) {
-        auto search_addr = i.first;
-        auto search_end = i.second - sizeof(Il2CppMetadataRegistration);
-        while (search_addr < search_end) {
-            auto metadataRegistration = (Il2CppMetadataRegistration *) search_addr;
-            if (metadataRegistration &&
-                metadataRegistration->typeDefinitionsSizesCount == typeDefinitionsCount) {
-                //LOGD("now: %" PRIx64"", search_addr - *il2cpp_addr);
-                auto metadataUsages_addr = (uint64_t) metadataRegistration->metadataUsages;
-                //LOGD("now2: %" PRIx64"", metadataUsages_addr);
-                if (check_range_1(dataSection, metadataUsages_addr)) {
-                    if (check_range_2(dataSection, metadataRegistration->metadataUsages,
-                                      typeDefinitionsCount + 2000)) {
-                        LOGD("metadataregistration_rva: %" PRIx64"", search_addr - *il2cpp_addr);
-                        *metadataregistration_addr = search_addr;
-                        return;
-                    }
-                }
-            }
-#ifdef __LP64__
-            search_addr += 8;
-#else
-            search_addr += 4;
-#endif
-        }
-    }
+    return addr;
 }
 
 std::string get_method_modifier(uint16_t flags) {
@@ -175,14 +106,14 @@ std::string dump_method(Il2CppClass *klass) {
             //TODO attribute
             if (method->methodPointer) {
                 outPut << "\t// RVA: 0x";
-                outPut << std::hex << (uint64_t) method->methodPointer - il2cpp_baseaddr;
+                outPut << std::hex << (uint64_t) method->methodPointer - il2cpp_base;
                 outPut << " VA: 0x";
                 outPut << std::hex << (uint64_t) method->methodPointer;
             } else {
                 outPut << "\t// RVA: 0x VA: 0x0";
             }
             if (method->slot != 65535) {
-                outPut << std::dec << " Slot: " << method->slot;
+                outPut << " Slot: " << std::dec << method->slot;
             }
             outPut << "\n\t";
             outPut << get_method_modifier(method->flags);
@@ -359,7 +290,7 @@ std::string dump_type(const Il2CppType *type) {
         }
     }
     if (klass->interfaces_count > 0) {
-        void *iter = NULL;
+        void *iter = nullptr;
         while (auto itf = il2cpp_class_get_interfaces(klass, &iter)) {
             extends.emplace_back(itf->name);
         }
@@ -395,61 +326,71 @@ void il2cpp_dump(void *handle, char *outDir) {
     }
     std::vector<std::string> outPuts(typeDefinitionsCount);
     LOGI("typeDefinitionsCount: %i", typeDefinitionsCount);
-    //TODO 2018.3.0f2(24.1)及以上版本可以使用il2cpp_image_get_class而不需要获取metadataregistration地址
-    uint64_t metadataregistration_addr = 0;
-    process_maps(typeDefinitionsCount, &il2cpp_baseaddr, &metadataregistration_addr);
-    LOGI("il2cpp_addr: %" PRIx64"", il2cpp_baseaddr);
-    LOGI("metadataregistration_addr: %" PRIx64"", metadataregistration_addr);
-    if (metadataregistration_addr > 0) {
-        LOGI("dumping...");
-        auto *metadataRegistration = (Il2CppMetadataRegistration *) metadataregistration_addr;
-        for (int i = 0; i < metadataRegistration->typesCount; ++i) {
-            auto type = metadataRegistration->types[i];
-            switch (type->type) {
-                case IL2CPP_TYPE_VOID:
-                case IL2CPP_TYPE_BOOLEAN:
-                case IL2CPP_TYPE_CHAR:
-                case IL2CPP_TYPE_I1:
-                case IL2CPP_TYPE_U1:
-                case IL2CPP_TYPE_I2:
-                case IL2CPP_TYPE_U2:
-                case IL2CPP_TYPE_I4:
-                case IL2CPP_TYPE_U4:
-                case IL2CPP_TYPE_I8:
-                case IL2CPP_TYPE_U8:
-                case IL2CPP_TYPE_R4:
-                case IL2CPP_TYPE_R8:
-                case IL2CPP_TYPE_STRING:
-                case IL2CPP_TYPE_VALUETYPE:
-                case IL2CPP_TYPE_CLASS:
-                case IL2CPP_TYPE_TYPEDBYREF:
-                case IL2CPP_TYPE_I:
-                case IL2CPP_TYPE_U:
-                case IL2CPP_TYPE_OBJECT:
-                case IL2CPP_TYPE_ENUM: {
-                    //LOGD("type name : %s", il2cpp_type_get_name(type));
-                    auto klassIndex = type->data.klassIndex;
-                    if (outPuts[klassIndex].empty()) {
-                        outPuts[klassIndex] = dump_type(type);
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
-        }
-        LOGI("write dump file");
-        auto outPath = std::string(outDir).append("/files/dump.cs");
-        std::ofstream outStream(outPath);
-        outStream << imageOutput.str();
-        for (int i = 0; i < typeDefinitionsCount; ++i) {
-            if (!outPuts[i].empty()) {
-                outStream << outPuts[i];
-            } else {
-                LOGW("miss typeDefinition: %d", i);
-            }
-        }
-        outStream.close();
-        LOGI("dump done!");
+    il2cpp_base = get_module_base("libil2cpp.so");
+    LOGI("il2cpp_base: %" PRIx64"", il2cpp_base);
+    auto corlib = il2cpp_get_corlib();
+    auto assemblyClass = il2cpp_class_from_name(corlib, "System.Reflection", "Assembly");
+    auto assemblyLoad = il2cpp_class_get_method_from_name(assemblyClass, "Load", 1);
+    auto assemblyGetTypes = il2cpp_class_get_method_from_name(assemblyClass, "GetTypes", 0);
+    if (assemblyLoad && assemblyLoad->methodPointer) {
+        LOGI("Assembly::Load: %p", assemblyLoad->methodPointer);
+    } else {
+        LOGI("miss Assembly::Load");
+        return;
     }
+    if (assemblyGetTypes && assemblyGetTypes->methodPointer) {
+        LOGI("Assembly::GetTypes: %p", assemblyGetTypes->methodPointer);
+    } else {
+        LOGI("miss Assembly::GetTypes");
+        return;
+    }
+#ifdef VersionAboveV24
+    typedef void *(*Assembly_Load_ftn)(Il2CppString *, void *);
+#else
+    typedef void *(*Assembly_Load_ftn)(void *, Il2CppString *, void *);
+#endif
+    typedef Il2CppArray *(*Assembly_GetTypes_ftn)(void *, void *);
+    LOGI("dumping...");
+    for (int i = 0; i < size; ++i) {
+        auto image = il2cpp_assembly_get_image(assemblies[i]);
+        //LOGD("image nama : %s", image->name);
+        auto imageName = std::string(image->name);
+        auto pos = imageName.rfind('.');
+        auto imageNameNoExt = imageName.substr(0, pos);
+        auto assemblyFileName = il2cpp_string_new(imageNameNoExt.c_str());
+#ifdef VersionAboveV24
+        auto reflectionAssembly = ((Assembly_Load_ftn) assemblyLoad->methodPointer)(
+                assemblyFileName, nullptr);
+#else
+        auto reflectionAssembly = ((Assembly_Load_ftn) assemblyLoad->methodPointer)(nullptr,
+                                                                                    assemblyFileName,
+                                                                                    nullptr);
+#endif
+        Il2CppArray *reflectionTypes = ((Assembly_GetTypes_ftn) assemblyGetTypes->methodPointer)(
+                reflectionAssembly, nullptr);
+        auto items = reflectionTypes->vector;
+        for (int j = 0; j < reflectionTypes->max_length; ++j) {
+            auto klass = il2cpp_class_from_system_type((Il2CppReflectionType *) items[j]);
+            auto type = il2cpp_class_get_type(klass);
+            //LOGD("type name : %s", il2cpp_type_get_name(type));
+            auto klassIndex = type->data.klassIndex;
+            if (outPuts[klassIndex].empty()) {
+                outPuts[klassIndex] = dump_type(type);
+            }
+        }
+    }
+    LOGI("write dump file");
+    auto outPath = std::string(outDir).append("/files/dump.cs");
+    std::ofstream outStream(outPath);
+    outStream << imageOutput.str();
+    for (int i = 0; i < typeDefinitionsCount; ++i) {
+        if (!outPuts[i].empty()) {
+            outStream << outPuts[i];
+        } else {
+            // <Module> always missing
+            //LOGW("miss typeDefinition: %d", i);
+        }
+    }
+    outStream.close();
+    LOGI("dump done!");
 }

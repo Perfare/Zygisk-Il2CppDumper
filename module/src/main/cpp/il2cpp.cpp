@@ -33,22 +33,25 @@ void init_il2cpp_api() {
 }
 
 uint64_t get_module_base(const char *module_name) {
-    uint64_t addr = 0;
-    char *pch;
     char line[1024];
+    uint64_t start = 0;
+    uint64_t end = 0;
+    char flags[5];
+    char path[PATH_MAX];
 
     FILE *fp = fopen("/proc/self/maps", "r");
     if (fp != nullptr) {
         while (fgets(line, sizeof(line), fp)) {
-            if (strstr(line, module_name) && strstr(line, "r-xp")) {
-                pch = strtok(line, "-");
-                addr = strtoull(pch, nullptr, 16);
-                break;
+            strcpy(path, "");
+            sscanf(line, "%" PRIx64"-%" PRIx64" %s %*" PRIx64" %*x:%*x %*u %s\n", &start, &end,
+                   flags, path);
+            if (strstr(path, "libil2cpp.so")) {
+                return start;
             }
         }
         fclose(fp);
     }
-    return addr;
+    return 0;
 }
 
 std::string get_method_modifier(uint16_t flags) {
@@ -97,7 +100,7 @@ std::string get_method_modifier(uint16_t flags) {
     return outPut.str();
 }
 
-std::string dump_method(Il2CppClass *klass) {
+std::string dump_method(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->method_count > 0) {
         outPut << "\n\t// Methods\n";
@@ -159,7 +162,7 @@ std::string dump_method(Il2CppClass *klass) {
     return outPut.str();
 }
 
-std::string dump_property(Il2CppClass *klass) {
+std::string dump_property(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->property_count > 0) {
         outPut << "\n\t// Properties\n";
@@ -167,7 +170,7 @@ std::string dump_property(Il2CppClass *klass) {
         while (auto prop = il2cpp_class_get_properties(klass, &iter)) {
             //TODO attribute
             outPut << "\t";
-            Il2CppClass *prop_class = nullptr;
+            Il2CppClass * prop_class = nullptr;
             if (prop->get) {
                 outPut << get_method_modifier(prop->get->flags);
                 prop_class = il2cpp_class_from_type(prop->get->return_type);
@@ -188,7 +191,7 @@ std::string dump_property(Il2CppClass *klass) {
     return outPut.str();
 }
 
-std::string dump_field(Il2CppClass *klass) {
+std::string dump_field(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->field_count > 0) {
         outPut << "\n\t// Fields\n";
@@ -345,7 +348,7 @@ void il2cpp_dump(void *handle, char *outDir) {
         return;
     }
 #ifdef VersionAboveV24
-    typedef void *(*Assembly_Load_ftn)(Il2CppString *, void *);
+    typedef void *(*Assembly_Load_ftn)(Il2CppString * , void * );
 #else
     typedef void *(*Assembly_Load_ftn)(void *, Il2CppString *, void *);
 #endif
@@ -353,7 +356,7 @@ void il2cpp_dump(void *handle, char *outDir) {
     LOGI("dumping...");
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
-        //LOGD("image nama : %s", image->name);
+        //LOGD("image name : %s", image->name);
         auto imageName = std::string(image->name);
         auto pos = imageName.rfind('.');
         auto imageNameNoExt = imageName.substr(0, pos);
@@ -366,7 +369,7 @@ void il2cpp_dump(void *handle, char *outDir) {
                                                                                     assemblyFileName,
                                                                                     nullptr);
 #endif
-        Il2CppArray *reflectionTypes = ((Assembly_GetTypes_ftn) assemblyGetTypes->methodPointer)(
+        Il2CppArray * reflectionTypes = ((Assembly_GetTypes_ftn) assemblyGetTypes->methodPointer)(
                 reflectionAssembly, nullptr);
         auto items = reflectionTypes->vector;
         for (int j = 0; j < reflectionTypes->max_length; ++j) {

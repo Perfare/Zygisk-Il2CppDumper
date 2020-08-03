@@ -45,7 +45,7 @@ uint64_t get_module_base(const char *module_name) {
             strcpy(path, "");
             sscanf(line, "%" PRIx64"-%" PRIx64" %s %*" PRIx64" %*x:%*x %*u %s\n", &start, &end,
                    flags, path);
-            if (strstr(path, "libil2cpp.so")) {
+            if (strstr(path, module_name)) {
                 return start;
             }
         }

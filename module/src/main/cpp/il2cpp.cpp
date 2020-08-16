@@ -318,6 +318,7 @@ void il2cpp_dump(void *handle, char *outDir) {
     il2cpp_handle = handle;
     init_il2cpp_api();
     auto domain = il2cpp_domain_get();
+    il2cpp_thread_attach(domain);
     size_t size;
     auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
     uint32_t typeDefinitionsCount = 0;

@@ -8,14 +8,14 @@
 #include <unistd.h>
 #include <sys/system_properties.h>
 #include <dlfcn.h>
-#include <whale.h>
-#include "il2cpp.h"
+#include <dobby.h>
+#include "il2cpp_dump.h"
 #include "game.h"
 
 int isGame(JNIEnv *env, jstring appDataDir) {
     if (!appDataDir)
         return 0;
-    const char *app_data_dir = env->GetStringUTFChars(appDataDir, NULL);
+    const char *app_data_dir = env->GetStringUTFChars(appDataDir, nullptr);
     int user = 0;
     static char package_name[256];
     if (sscanf(app_data_dir, "/data/%*[^/]/%d/%s", &user, package_name) != 2) {
@@ -80,25 +80,24 @@ void *hack_thread(void *arg) {
         void *libdl_handle = dlopen("libdl.so", RTLD_LAZY);
         void *__loader_dlopen_addr = dlsym(libdl_handle, "__loader_dlopen");
         LOGI("__loader_dlopen at: %p", __loader_dlopen_addr);
-        WInlineHookFunction(__loader_dlopen_addr, (void *) new___loader_dlopen,
-                            (void **) &orig___loader_dlopen);
+        DobbyHook(__loader_dlopen_addr, (void *) new___loader_dlopen,
+                  (void **) &orig___loader_dlopen);
     } else {
-        void *linker_handle = WDynamicLibOpen(kLinkerPath);
         if (api_level > 23) {
-            void *symbol = WDynamicLibSymbol(linker_handle,
-                                             "__dl__Z9do_dlopenPKciPK17android_dlextinfoPv");
+            void *symbol = DobbySymbolResolver(nullptr,
+                                               "__dl__Z9do_dlopenPKciPK17android_dlextinfoPv");
             if (symbol) {
                 LOGI("do_dlopen at: %p", symbol);
-                WInlineHookFunction(symbol, (void *) new_do_dlopen_V24,
-                                    (void **) &orig_do_dlopen_V24);
+                DobbyHook(symbol, (void *) new_do_dlopen_V24,
+                          (void **) &orig_do_dlopen_V24);
             }
         } else {
-            void *symbol = WDynamicLibSymbol(linker_handle,
-                                             "__dl__Z9do_dlopenPKciPK17android_dlextinfo");
+            void *symbol = DobbySymbolResolver(nullptr,
+                                               "__dl__Z9do_dlopenPKciPK17android_dlextinfo");
             if (symbol) {
                 LOGI("do_dlopen at: %p", symbol);
-                WInlineHookFunction(symbol, (void *) new_do_dlopen_V19,
-                                    (void **) &orig_do_dlopen_V19);
+                DobbyHook(symbol, (void *) new_do_dlopen_V19,
+                          (void **) &orig_do_dlopen_V19);
             }
         }
     }
@@ -107,5 +106,5 @@ void *hack_thread(void *arg) {
     }
     sleep(5);
     il2cpp_dump(il2cpp_handle, game_data_dir);
-    return NULL;
+    return nullptr;
 }

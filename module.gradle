@@ -1,15 +1,23 @@
 ext {
-    moduleId = "il2cppdumper" // FIXME replace with yours
-    riruApiVersion = 7
-    riruMinVersionName = "v21.2"
+    // FIXME replace with yours
+    moduleId = "il2cppdumper"
+    moduleName = "Il2CppDumper"
+    moduleAuthor = "Perfare"
+    moduleDescription = "Il2CppDumper Riru version."
+    moduleVersion = "v1.1"
+    moduleVersionCode = 1
+
+    moduleMinRiruApiVersion = 9
+    moduleMinRiruVersionName = "v22.0"
+    moduleRiruApiVersion = 10
 
     moduleProp = [
-            name       : "Il2CppDumper", // FIXME replace with yours
-            version    : "v1.0", // FIXME replace with yours
-            versionCode: "1", // FIXME replace with yours
-            author     : "Perfare", // FIXME replace with yours
-            description: "Il2CppDumper Riru version.", // FIXME replace with yours
-            api        : riruApiVersion
+            name       : moduleName,
+            version    : moduleVersion,
+            versionCode: moduleVersionCode.toString(),
+            author     : moduleAuthor,
+            description: moduleDescription,
+            minApi     : moduleMinRiruApiVersion
     ]
 
     magiskModuleProp = [

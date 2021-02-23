@@ -20,10 +20,4 @@ void *hack_thread(void *arg);
   ret (*orig_##func)(__VA_ARGS__); \
   ret new_##func(__VA_ARGS__)
 
-#ifdef __LP64__
-static constexpr const char *kLinkerPath = "/system/bin/linker64";
-#else
-static constexpr const char *kLinkerPath = "/system/bin/linker";
-#endif
-
 #endif //RIRU_IL2CPPDUMPER_HOOK_H

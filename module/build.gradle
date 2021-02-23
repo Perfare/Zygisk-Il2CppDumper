@@ -8,9 +8,16 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         externalNativeBuild {
             cmake {
-                arguments "-DMODULE_NAME:STRING=riru_$moduleId"
+                arguments "-DMODULE_NAME:STRING=riru_$moduleId",
+                        "-DRIRU_MODULE_API_VERSION=$moduleRiruApiVersion",
+                        "-DRIRU_MODULE_VERSION=$moduleVersionCode",
+                        "-DRIRU_MODULE_VERSION_NAME:STRING=\"$moduleVersion\""
+
             }
         }
+    }
+    buildFeatures {
+        prefab true
     }
     externalNativeBuild {
         cmake {
@@ -20,10 +27,31 @@ android {
     }
 }
 
+repositories {
+    mavenLocal()
+    jcenter()
+    maven { url 'https://dl.bintray.com/rikkaw/Libraries' }
+}
+
+dependencies {
+    // This is prefab aar which contains "riru.h"
+    // If you want to use older versions of AGP,
+    // you can copy this file from https://github.com/RikkaApps/Riru/blob/master/riru/src/main/cpp/include_riru/riru.h
+
+    // The default version of prefab in AGP has problem to process header only package,
+    // you may have to add android.prefabVersion=1.1.2 in your gradle.properties.
+    // See https://github.com/google/prefab/issues/122
+
+    implementation 'rikka.ndk:riru:10'
+}
+
 def outDir = file("$rootDir/out")
 def magiskDir = file("$outDir/magisk_module")
-def zipName = "magisk-${magiskModuleProp['id'].replace('_', '-')}-${magiskModuleProp['version']}.zip"
+def zipName = "${magiskModuleProp['id'].replace('_', '-')}-${magiskModuleProp['version']}.zip"
 def riruDir = "$magiskDir/riru"
+
+
+import org.apache.tools.ant.filters.FixCrLfFilter
 
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -41,8 +69,6 @@ static def renameOrFail(File from, File to) {
         throw new IOException("Unable reanme file $from to $to")
     }
 }
-
-import org.apache.tools.ant.filters.FixCrLfFilter
 
 android.libraryVariants.all { variant ->
     def task = variant.assembleProvider.get()
@@ -63,8 +89,9 @@ android.libraryVariants.all { variant ->
             include 'riru.sh'
             filter { line ->
                 line.replaceAll('%%%RIRU_MODULE_ID%%%', moduleId)
-                        .replaceAll('%%%RIRU_MIN_API_VERSION%%%', riruApiVersion.toString())
-                        .replaceAll('%%%RIRU_MIN_VERSION_NAME%%%', riruMinVersionName)
+                        .replaceAll('%%%RIRU_MODULE_API_VERSION%%%', moduleRiruApiVersion.toString())
+                        .replaceAll('%%%RIRU_MODULE_MIN_API_VERSION%%%', moduleMinRiruApiVersion.toString())
+                        .replaceAll('%%%RIRU_MODULE_MIN_RIRU_VERSION_NAME%%%', moduleMinRiruVersionName)
             }
             filter(FixCrLfFilter.class,
                     eol: FixCrLfFilter.CrLf.newInstance("lf"))

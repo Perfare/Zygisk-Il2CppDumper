@@ -29,8 +29,7 @@ android {
 
 repositories {
     mavenLocal()
-    jcenter()
-    maven { url 'https://dl.bintray.com/rikkaw/Libraries' }
+    mavenCentral()
 }
 
 dependencies {
@@ -42,7 +41,7 @@ dependencies {
     // you may have to add android.prefabVersion=1.1.2 in your gradle.properties.
     // See https://github.com/google/prefab/issues/122
 
-    implementation 'rikka.ndk:riru:10'
+    implementation group: 'dev.rikka.ndk', name: 'riru', version: '10'
 }
 
 def outDir = file("$rootDir/out")

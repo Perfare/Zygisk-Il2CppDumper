@@ -76,29 +76,35 @@ void *hack_thread(void *arg) {
     LOGI("hack thread: %d", gettid());
     int api_level = GetAndroidApiLevel();
     LOGI("api level: %d", api_level);
-    if (api_level > 25) {
+    if (api_level >= 30) {
+        void *addr = DobbySymbolResolver(nullptr,
+                                         "__dl__Z9do_dlopenPKciPK17android_dlextinfoPKv");
+        if (addr) {
+            LOGI("do_dlopen at: %p", addr);
+            DobbyHook(addr, (void *) new_do_dlopen_V24,
+                      (void **) &orig_do_dlopen_V24);
+        }
+    } else if (api_level >= 26) {
         void *libdl_handle = dlopen("libdl.so", RTLD_LAZY);
-        void *__loader_dlopen_addr = dlsym(libdl_handle, "__loader_dlopen");
-        LOGI("__loader_dlopen at: %p", __loader_dlopen_addr);
-        DobbyHook(__loader_dlopen_addr, (void *) new___loader_dlopen,
+        void *addr = dlsym(libdl_handle, "__loader_dlopen");
+        LOGI("__loader_dlopen at: %p", addr);
+        DobbyHook(addr, (void *) new___loader_dlopen,
                   (void **) &orig___loader_dlopen);
+    } else if (api_level >= 24) {
+        void *addr = DobbySymbolResolver(nullptr,
+                                         "__dl__Z9do_dlopenPKciPK17android_dlextinfoPv");
+        if (addr) {
+            LOGI("do_dlopen at: %p", addr);
+            DobbyHook(addr, (void *) new_do_dlopen_V24,
+                      (void **) &orig_do_dlopen_V24);
+        }
     } else {
-        if (api_level > 23) {
-            void *symbol = DobbySymbolResolver(nullptr,
-                                               "__dl__Z9do_dlopenPKciPK17android_dlextinfoPv");
-            if (symbol) {
-                LOGI("do_dlopen at: %p", symbol);
-                DobbyHook(symbol, (void *) new_do_dlopen_V24,
-                          (void **) &orig_do_dlopen_V24);
-            }
-        } else {
-            void *symbol = DobbySymbolResolver(nullptr,
-                                               "__dl__Z9do_dlopenPKciPK17android_dlextinfo");
-            if (symbol) {
-                LOGI("do_dlopen at: %p", symbol);
-                DobbyHook(symbol, (void *) new_do_dlopen_V19,
-                          (void **) &orig_do_dlopen_V19);
-            }
+        void *addr = DobbySymbolResolver(nullptr,
+                                         "__dl__Z9do_dlopenPKciPK17android_dlextinfo");
+        if (addr) {
+            LOGI("do_dlopen at: %p", addr);
+            DobbyHook(addr, (void *) new_do_dlopen_V19,
+                      (void **) &orig_do_dlopen_V19);
         }
     }
     while (!il2cpp_handle) {

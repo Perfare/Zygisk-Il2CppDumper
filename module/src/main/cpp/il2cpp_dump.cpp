@@ -46,6 +46,10 @@ uint64_t get_module_base(const char *module_name) {
             strcpy(path, "");
             sscanf(line, "%" PRIx64"-%" PRIx64" %s %*" PRIx64" %*x:%*x %*u %s\n", &start, &end,
                    flags, path);
+#if defined(__aarch64__)
+            if (strstr(flags, "x") == 0) //TODO
+                continue;
+#endif
             if (strstr(path, module_name)) {
                 addr = start;
                 break;

@@ -102,7 +102,7 @@ std::string get_method_modifier(uint16_t flags) {
     return outPut.str();
 }
 
-std::string dump_method(Il2CppClass *klass) {
+std::string dump_method(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->method_count > 0) {
         outPut << "\n\t// Methods\n";
@@ -163,7 +163,7 @@ std::string dump_method(Il2CppClass *klass) {
     return outPut.str();
 }
 
-std::string dump_property(Il2CppClass *klass) {
+std::string dump_property(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->property_count > 0) {
         outPut << "\n\t// Properties\n";
@@ -171,7 +171,7 @@ std::string dump_property(Il2CppClass *klass) {
         while (auto prop = il2cpp_class_get_properties(klass, &iter)) {
             //TODO attribute
             outPut << "\t";
-            Il2CppClass *prop_class = nullptr;
+            Il2CppClass * prop_class = nullptr;
             if (prop->get) {
                 outPut << get_method_modifier(prop->get->flags);
                 prop_class = il2cpp_class_from_type(prop->get->return_type);
@@ -192,7 +192,7 @@ std::string dump_property(Il2CppClass *klass) {
     return outPut.str();
 }
 
-std::string dump_field(Il2CppClass *klass) {
+std::string dump_field(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->field_count > 0) {
         outPut << "\n\t// Fields\n";
@@ -247,6 +247,11 @@ std::string dump_type(const Il2CppType *type) {
         outPut << "[Serializable]\n";
     }
     //TODO attribute
+#ifdef VersionAbove2021dot1
+    auto valuetype = type->valuetype;
+#else
+    auto valuetype = klass->valuetype;
+#endif
     auto visibility = flags & TYPE_ATTRIBUTE_VISIBILITY_MASK;
     switch (visibility) {
         case TYPE_ATTRIBUTE_PUBLIC:
@@ -272,21 +277,21 @@ std::string dump_type(const Il2CppType *type) {
         outPut << "static ";
     } else if (!(flags & TYPE_ATTRIBUTE_INTERFACE) && flags & TYPE_ATTRIBUTE_ABSTRACT) {
         outPut << "abstract ";
-    } else if (!klass->valuetype && !klass->enumtype && flags & TYPE_ATTRIBUTE_SEALED) {
+    } else if (!valuetype && !klass->enumtype && flags & TYPE_ATTRIBUTE_SEALED) {
         outPut << "sealed ";
     }
     if (flags & TYPE_ATTRIBUTE_INTERFACE) {
         outPut << "interface ";
     } else if (klass->enumtype) {
         outPut << "enum ";
-    } else if (klass->valuetype) {
+    } else if (valuetype) {
         outPut << "struct ";
     } else {
         outPut << "class ";
     }
     outPut << klass->name; //TODO genericContainerIndex
     std::vector<std::string> extends;
-    if (!klass->valuetype && !klass->enumtype && klass->parent) {
+    if (!valuetype && !klass->enumtype && klass->parent) {
         auto parent_type = il2cpp_class_get_type(klass->parent);
         if (parent_type->type != IL2CPP_TYPE_OBJECT) {
             extends.emplace_back(klass->parent->name);
@@ -304,7 +309,11 @@ std::string dump_type(const Il2CppType *type) {
             outPut << ", " << extends[i];
         }
     }
+#ifdef VersionAbove2020dot2
+    outPut << " // TypeDefIndex: " << type->data.__klassIndex << "\n{";
+#else
     outPut << " // TypeDefIndex: " << type->data.klassIndex << "\n{";
+#endif
     outPut << dump_field(klass);
     outPut << dump_property(klass);
     outPut << dump_method(klass);
@@ -315,10 +324,10 @@ std::string dump_type(const Il2CppType *type) {
 
 void il2cpp_dump(void *handle, char *outDir) {
     LOGI("UnityVersion: %s", STRINGIFY_MACRO(UnityVersion));
-#ifdef VersionAboveV24
-    LOGI("VersionAboveV24: on");
+#ifdef VersionAbove2018dot3
+    LOGI("VersionAbove2018dot3: on");
 #else
-    LOGI("VersionAboveV24: off");
+    LOGI("VersionAbove2018dot3: off");
 #endif
     LOGI("il2cpp_handle: %p", handle);
     il2cpp_handle = handle;
@@ -331,14 +340,15 @@ void il2cpp_dump(void *handle, char *outDir) {
     std::stringstream imageOutput;
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
+        imageOutput << "// Image " << i << ": " << image->name << " - " << typeDefinitionsCount
+                    << "\n";
         typeDefinitionsCount += image->typeCount;
-        imageOutput << "// Image " << i << ": " << image->name << " - " << image->typeStart << "\n";
     }
     std::vector<std::string> outPuts(typeDefinitionsCount);
     LOGI("typeDefinitionsCount: %i", typeDefinitionsCount);
     il2cpp_base = get_module_base("libil2cpp.so");
     LOGI("il2cpp_base: %" PRIx64"", il2cpp_base);
-#ifdef VersionAboveV24
+#ifdef VersionAbove2018dot3
     //使用il2cpp_image_get_class
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
@@ -347,7 +357,11 @@ void il2cpp_dump(void *handle, char *outDir) {
             auto klass = il2cpp_image_get_class(image, j);
             auto type = il2cpp_class_get_type(const_cast<Il2CppClass *>(klass));
             //LOGD("type name : %s", il2cpp_type_get_name(type));
+#ifdef VersionAbove2020dot2
+            auto klassIndex = type->data.__klassIndex;
+#else
             auto klassIndex = type->data.klassIndex;
+#endif
             if (outPuts[klassIndex].empty()) {
                 outPuts[klassIndex] = dump_type(type);
             }
@@ -371,7 +385,7 @@ void il2cpp_dump(void *handle, char *outDir) {
         LOGI("miss Assembly::GetTypes");
         return;
     }
-#ifdef VersionAboveV24
+#ifdef VersionAbove2018dot3
     typedef void *(*Assembly_Load_ftn)(Il2CppString * , void * );
 #else
     typedef void *(*Assembly_Load_ftn)(void *, Il2CppString *, void *);
@@ -385,7 +399,7 @@ void il2cpp_dump(void *handle, char *outDir) {
         auto pos = imageName.rfind('.');
         auto imageNameNoExt = imageName.substr(0, pos);
         auto assemblyFileName = il2cpp_string_new(imageNameNoExt.c_str());
-#ifdef VersionAboveV24
+#ifdef VersionAbove2018dot3
         auto reflectionAssembly = ((Assembly_Load_ftn) assemblyLoad->methodPointer)(
                 assemblyFileName, nullptr);
 #else

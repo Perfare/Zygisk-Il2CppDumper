@@ -6,10 +6,16 @@
 #define RIRU_IL2CPPDUMPER_GAME_H
 
 #define GamePackageName "com.game.packagename"
-#define UnityVersion 2019.3.7f1
+#define UnityVersion 2021.1.0f1
 
-// 2018.3.0f2(v24.1) and up enable it
-#define VersionAboveV24
+// 2018.3.0f2 and up enable it
+#define VersionAbove2018dot3
+
+// 2020.2.0f1 and up enable it
+#define VersionAbove2020dot2
+
+// 2021.1.0f1 and up enable it
+#define VersionAbove2021dot1
 
 // UnityVersion Compatible list
 // 5.3.0f4     | 5.3.0f4 - 5.3.1f1         | v16
@@ -31,8 +37,15 @@
 // 2018.1.0f2  | 2018.1.0f2 - 2018.1.9f2   | v24
 // 2018.2.0f2  | 2018.2.0f2 - 2018.2.21f1  | v24
 // 2018.3.0f2  | 2018.3.0f2 - 2018.3.7f1   | v24.1
-// 2018.3.8f1  | 2018.3.8f1 - 2018.4.24f1  | v24.1
+// 2018.3.8f1  | 2018.3.8f1 - 2018.4.36f1  | v24.1
 // 2019.1.0f2  | 2019.1.0f2 - 2019.2.21f1  | v24.2
 // 2019.3.0f6  | 2019.3.0f6 - 2019.3.6f1   | v24.2
-// 2019.3.7f1  | 2019.3.7f1 - 2019.4.4f1   | v24.3
+// 2019.3.7f1  | 2019.3.7f1 - 2019.4.14f1  | v24.3
+// 2019.4.15f1 | 2019.4.15f1 - 2019.4.20f1 | v24.4
+// 2019.4.21f1 | 2019.4.21f1 - 2019.4.29f1 | v24.5
+// 2020.1.0f1  | 2020.1.0f1 - 2020.1.10f1  | v24.3
+// 2020.1.11f1 | 2020.1.11f1 - 2020.1.17f1 | v24.4
+// 2020.2.0f1  | 2020.2.0f1 - 2020.2.3f1   | v27
+// 2020.2.4f1  | 2020.2.4f1 - 2020.3.15f2  | v27.1
+// 2021.1.0f1  | 2021.1.0f1 - 2021.1.16f1  | v27.2
 #endif //RIRU_IL2CPPDUMPER_GAME_H

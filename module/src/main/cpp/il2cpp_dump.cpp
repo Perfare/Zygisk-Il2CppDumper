@@ -183,14 +183,20 @@ std::string dump_property(Il2CppClass * klass) {
                 outPut << get_method_modifier(prop->set->flags);
                 prop_class = il2cpp_class_from_type(prop->set->parameters[0].parameter_type);
             }
-            outPut << prop_class->name << " " << prop->name << " { ";
-            if (prop->get) {
-                outPut << "get; ";
+            if (prop_class) {
+                outPut << prop_class->name << " " << prop->name << " { ";
+                if (prop->get) {
+                    outPut << "get; ";
+                }
+                if (prop->set) {
+                    outPut << "set; ";
+                }
+                outPut << "}\n";
+            } else {
+                if (prop->name) {
+                    outPut << " // unknown property " << prop->name;
+                }
             }
-            if (prop->set) {
-                outPut << "set; ";
-            }
-            outPut << "}\n";
         }
     }
     return outPut.str();

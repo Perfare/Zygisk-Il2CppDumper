@@ -1,31 +1,30 @@
 ext {
-    // FIXME replace with yours
-    moduleId = "il2cppdumper"
+    /*
+       This name will be used in the name of the so file ("lib${moduleLibraryName}.so").
+    */
+    moduleLibraryName = "il2cppdumper"
+
+    /* Minimal supported Riru API version, used in the version check of riru.sh */
+    moduleMinRiruApiVersion = 24
+
+    /* The version name of minimal supported Riru, used in the version check of riru.sh */
+    moduleMinRiruVersionName = "v24.0.0"
+
+    /* Maximum supported Riru API version, used in the version check of riru.sh */
+    moduleRiruApiVersion = 26
+
+    /*
+       Magisk module ID
+       Since Magisk use it to distinguish different modules, you should never change it.
+
+       Note, the older version of the template uses '-' instead of '_', if your are upgrading from
+       the older version, please pay attention.
+    */
+    magiskModuleId = "riru_il2cppdumper"
+
     moduleName = "Il2CppDumper"
     moduleAuthor = "Perfare"
     moduleDescription = "Il2CppDumper Riru version."
-    moduleVersion = "v1.1"
-    moduleVersionCode = 1
-
-    moduleMinRiruApiVersion = 9
-    moduleMinRiruVersionName = "v22.0"
-    moduleRiruApiVersion = 10
-
-    moduleProp = [
-            name       : moduleName,
-            version    : moduleVersion,
-            versionCode: moduleVersionCode.toString(),
-            author     : moduleAuthor,
-            description: moduleDescription,
-            minApi     : moduleMinRiruApiVersion
-    ]
-
-    magiskModuleProp = [
-            id         : "riru-${moduleId.replace('_', '-')}",
-            name       : "Riru - ${moduleProp['name']}",
-            version    : moduleProp['version'],
-            versionCode: moduleProp['versionCode'],
-            author     : moduleProp['author'],
-            description: moduleProp['description']
-    ]
+    moduleVersion = "v26.0.0"
+    moduleVersionCode = 26
 }

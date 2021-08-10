@@ -3,23 +3,28 @@
 #include <riru.h>
 #include <malloc.h>
 #include <cstring>
+#include <config.h>
 #include <pthread.h>
 #include "hook.h"
 
 static void forkAndSpecializePre(
-        JNIEnv *env, jclass clazz, jint *_uid, jint *gid, jintArray *gids, jint *runtimeFlags,
+        JNIEnv *env, jclass clazz, jint *uid, jint *gid, jintArray *gids, jint *runtimeFlags,
         jobjectArray *rlimits, jint *mountExternal, jstring *seInfo, jstring *niceName,
         jintArray *fdsToClose, jintArray *fdsToIgnore, jboolean *is_child_zygote,
-        jstring *instructionSet, jstring *appDataDir, jboolean *isTopApp,
-        jobjectArray *pkgDataInfoList,
-        jobjectArray *whitelistedDataInfoList, jboolean *bindMountAppDataDirs,
-        jboolean *bindMountAppStorageDirs) {
-    enable_hack = isGame(env, *appDataDir);
+        jstring *instructionSet, jstring *appDataDir, jboolean *isTopApp, jobjectArray *pkgDataInfoList,
+        jobjectArray *whitelistedDataInfoList, jboolean *bindMountAppDataDirs, jboolean *bindMountAppStorageDirs) {
+    // Called "before" com_android_internal_os_Zygote_nativeForkAndSpecialize in frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+    // Parameters are pointers, you can change the value of them if you want
+    // Some parameters are not exist is older Android versions, in this case, they are null or 0
+	enable_hack = isGame(env, *appDataDir);
 }
 
 static void forkAndSpecializePost(JNIEnv *env, jclass clazz, jint res) {
+    // Called "after" com_android_internal_os_Zygote_nativeForkAndSpecialize in frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+    // "res" is the return value of com_android_internal_os_Zygote_nativeForkAndSpecialize
+
     if (res == 0) {
-        // in app process
+        // In app process
         if (enable_hack) {
             int ret;
             pthread_t ntid;
@@ -27,130 +32,93 @@ static void forkAndSpecializePost(JNIEnv *env, jclass clazz, jint res) {
                 LOGE("can't create thread: %s\n", strerror(ret));
             }
         }
+        // When unload allowed is true, the module will be unloaded (dlclose) by Riru
+        // If this modules has hooks installed, DONOT set it to true, or there will be SIGSEGV
+        // This value will be automatically reset to false before the "pre" function is called
+        riru_set_unload_allowed(false);
     } else {
-        // in zygote process, res is child pid
-        // don't print log here, see https://github.com/RikkaApps/Riru/blob/77adfd6a4a6a81bfd20569c910bc4854f2f84f5e/riru-core/jni/main/jni_native_method.cpp#L55-L66
+        // In zygote process
     }
 }
 
 static void specializeAppProcessPre(
-        JNIEnv *env, jclass clazz, jint *_uid, jint *gid, jintArray *gids, jint *runtimeFlags,
+        JNIEnv *env, jclass clazz, jint *uid, jint *gid, jintArray *gids, jint *runtimeFlags,
         jobjectArray *rlimits, jint *mountExternal, jstring *seInfo, jstring *niceName,
         jboolean *startChildZygote, jstring *instructionSet, jstring *appDataDir,
         jboolean *isTopApp, jobjectArray *pkgDataInfoList, jobjectArray *whitelistedDataInfoList,
         jboolean *bindMountAppDataDirs, jboolean *bindMountAppStorageDirs) {
-    // added from Android 10, but disabled at least in Google Pixel devices
+    // Called "before" com_android_internal_os_Zygote_nativeSpecializeAppProcess in frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+    // Parameters are pointers, you can change the value of them if you want
+    // Some parameters are not exist is older Android versions, in this case, they are null or 0
 }
 
 static void specializeAppProcessPost(
         JNIEnv *env, jclass clazz) {
-    // added from Android 10, but disabled at least in Google Pixel devices
+    // Called "after" com_android_internal_os_Zygote_nativeSpecializeAppProcess in frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+
+    // When unload allowed is true, the module will be unloaded (dlclose) by Riru
+    // If this modules has hooks installed, DONOT set it to true, or there will be SIGSEGV
+    // This value will be automatically reset to false before the "pre" function is called
+    riru_set_unload_allowed(true);
 }
 
 static void forkSystemServerPre(
         JNIEnv *env, jclass clazz, uid_t *uid, gid_t *gid, jintArray *gids, jint *runtimeFlags,
         jobjectArray *rlimits, jlong *permittedCapabilities, jlong *effectiveCapabilities) {
-
+    // Called "before" com_android_internal_os_Zygote_forkSystemServer in frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+    // Parameters are pointers, you can change the value of them if you want
+    // Some parameters are not exist is older Android versions, in this case, they are null or 0
 }
 
 static void forkSystemServerPost(JNIEnv *env, jclass clazz, jint res) {
+    // Called "after" com_android_internal_os_Zygote_forkSystemServer in frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
+
     if (res == 0) {
-        // in system server process
+        // In system server process
     } else {
-        // in zygote process, res is child pid
-        // don't print log here, see https://github.com/RikkaApps/Riru/blob/77adfd6a4a6a81bfd20569c910bc4854f2f84f5e/riru-core/jni/main/jni_native_method.cpp#L55-L66
+        // In zygote process
     }
 }
 
-static int shouldSkipUid(int uid) {
-    // by default, Riru only call module functions in "normal app processes" (10000 <= uid % 100000 <= 19999)
-    // false = don't skip
-    return false;
-}
-
 static void onModuleLoaded() {
-    // called when the shared library of Riru core is loaded
+    // Called when this library is loaded and "hidden" by Riru (see Riru's hide.cpp)
+
+    // If you want to use threads, start them here rather than the constructors
+    // __attribute__((constructor)) or constructors of static variables,
+    // or the "hide" will cause SIGSEGV
 }
 
 extern "C" {
 
 int riru_api_version;
-RiruApiV9 *riru_api_v9;
+const char *riru_magisk_module_path = nullptr;
+int *riru_allow_unload = nullptr;
 
-/*
- * Init will be called three times.
- *
- * The first time:
- *   Returns the highest version number supported by both Riru and the module.
- *
- *   arg: (int *) Riru's API version
- *   returns: (int *) the highest possible API version
- *
- * The second time:
- *   Returns the RiruModuleX struct created by the module.
- *   (X is the return of the first call)
- *
- *   arg: (RiruApiVX *) RiruApi strcut, this pointer can be saved for further use
- *   returns: (RiruModuleX *) RiruModule strcut
- *
- * The second time:
- *   Let the module to cleanup (such as RiruModuleX struct created before).
- *
- *   arg: null
- *   returns: (ignored)
- *
- */
-void *init(void *arg) {
-    static int step = 0;
-    step += 1;
-
-    static void *_module;
-
-    switch (step) {
-        case 1: {
-            auto core_max_api_version = *(int *) arg;
-            riru_api_version =
-                    core_max_api_version <= RIRU_MODULE_API_VERSION ? core_max_api_version
-                                                                    : RIRU_MODULE_API_VERSION;
-            return &riru_api_version;
+static auto module = RiruVersionedModuleInfo{
+        .moduleApiVersion = riru::moduleApiVersion,
+        .moduleInfo= RiruModuleInfo{
+                .supportHide = true,
+                .version = riru::moduleVersionCode,
+                .versionName = riru::moduleVersionName,
+                .onModuleLoaded = onModuleLoaded,
+                .forkAndSpecializePre = forkAndSpecializePre,
+                .forkAndSpecializePost = forkAndSpecializePost,
+                .forkSystemServerPre = forkSystemServerPre,
+                .forkSystemServerPost = forkSystemServerPost,
+                .specializeAppProcessPre = specializeAppProcessPre,
+                .specializeAppProcessPost = specializeAppProcessPost
         }
-        case 2: {
-            switch (riru_api_version) {
-                // RiruApiV10 and RiruModuleInfoV10 are equal to V9
-                case 10:
-                case 9: {
-                    riru_api_v9 = (RiruApiV9 *) arg;
+};
 
-                    auto module = (RiruModuleInfoV9 *) malloc(sizeof(RiruModuleInfoV9));
-                    memset(module, 0, sizeof(RiruModuleInfoV9));
-                    _module = module;
+RiruVersionedModuleInfo *init(Riru *riru) {
+    auto core_max_api_version = riru->riruApiVersion;
+    riru_api_version = core_max_api_version <= riru::moduleApiVersion ? core_max_api_version : riru::moduleApiVersion;
+    module.moduleApiVersion = riru_api_version;
 
-                    module->supportHide = true;
-
-                    module->version = RIRU_MODULE_VERSION;
-                    module->versionName = RIRU_MODULE_VERSION_NAME;
-                    module->onModuleLoaded = onModuleLoaded;
-                    module->shouldSkipUid = shouldSkipUid;
-                    module->forkAndSpecializePre = forkAndSpecializePre;
-                    module->forkAndSpecializePost = forkAndSpecializePost;
-                    module->specializeAppProcessPre = specializeAppProcessPre;
-                    module->specializeAppProcessPost = specializeAppProcessPost;
-                    module->forkSystemServerPre = forkSystemServerPre;
-                    module->forkSystemServerPost = forkSystemServerPost;
-                    return module;
-                }
-                default: {
-                    return nullptr;
-                }
-            }
-        }
-        case 3: {
-            free(_module);
-            return nullptr;
-        }
-        default: {
-            return nullptr;
-        }
+    riru_magisk_module_path = strdup(riru->magiskModulePath);
+    if (riru_api_version >= 25) {
+        riru_allow_unload = riru->allowUnload;
     }
+    return &module;
 }
 }

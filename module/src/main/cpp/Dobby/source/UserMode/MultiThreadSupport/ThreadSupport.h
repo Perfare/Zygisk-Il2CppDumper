@@ -21,7 +21,7 @@ typedef struct _CallStack {
   std::vector<StackFrame *> stackframes;
 } CallStack;
 
-// ThreadSupport base on vm_core, support mutipl platforms.
+// ThreadSupport base on vm_core, support multiple platforms.
 class ThreadSupport {
 public:
   // Push stack frame

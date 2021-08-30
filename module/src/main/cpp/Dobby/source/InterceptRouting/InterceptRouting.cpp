@@ -59,7 +59,7 @@ ARM - 8 bytes:
   [data_address]
 */
 
-// Active routing, will patch the origin insturctions, and forward to our custom routing.
+// Active routing, will patch the origin instructions, and forward to our custom routing.
 // Patch the address with branch instr
 void InterceptRouting::Active() {
   void *patch_address = NULL;

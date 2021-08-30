@@ -3,7 +3,7 @@
 
 #include "dobby_internal.h"
 
-// List utilty
+// List utility
 
 struct list_head {
   struct list_head *next;

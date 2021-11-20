@@ -6,16 +6,13 @@
 #define RIRU_IL2CPPDUMPER_GAME_H
 
 #define GamePackageName "com.game.packagename"
-#define UnityVersion 2021.1.0f1
+#define UnityVersion 2020.2.4f1
 
 // 2018.3.0f2 and up enable it
 #define VersionAbove2018dot3
 
-// 2020.2.0f1 and up enable it
-#define VersionAbove2020dot2
-
 // 2021.1.0f1 and up enable it
-#define VersionAbove2021dot1
+//#define VersionAbove2021dot1
 
 // UnityVersion Compatible list
 // 5.3.0f4     | 5.3.0f4 - 5.3.1f1         | v16

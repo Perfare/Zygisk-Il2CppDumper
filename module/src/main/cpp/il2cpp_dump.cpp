@@ -319,11 +319,7 @@ std::string dump_type(const Il2CppType *type) {
             outPut << ", " << extends[i];
         }
     }
-#ifdef VersionAbove2020dot2
-    outPut << " // TypeDefIndex: " << type->data.__klassIndex << "\n{";
-#else
-    outPut << " // TypeDefIndex: " << type->data.klassIndex << "\n{";
-#endif
+    outPut << "\n{";
     outPut << dump_field(klass);
     outPut << dump_property(klass);
     outPut << dump_method(klass);
@@ -350,31 +346,27 @@ void il2cpp_dump(void *handle, char *outDir) {
     std::stringstream imageOutput;
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
-        imageOutput << "// Image " << i << ": " << image->name << " - " << typeDefinitionsCount
-                    << "\n";
+        imageOutput << "// Image " << i << ": " << image->name << " - " << "typeCount : "
+                    << image->typeCount << "\n";
         typeDefinitionsCount += image->typeCount;
     }
-    std::vector<std::string> outPuts(typeDefinitionsCount);
     LOGI("typeDefinitionsCount: %i", typeDefinitionsCount);
     il2cpp_base = get_module_base("libil2cpp.so");
     LOGI("il2cpp_base: %" PRIx64"", il2cpp_base);
+    std::vector<std::string> outPuts;
 #ifdef VersionAbove2018dot3
     //使用il2cpp_image_get_class
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
+        std::stringstream imageStr;
+        imageStr << "\n// Dll : " << image->name;
         auto classCount = il2cpp_image_get_class_count(image);
         for (int j = 0; j < classCount; ++j) {
             auto klass = il2cpp_image_get_class(image, j);
             auto type = il2cpp_class_get_type(const_cast<Il2CppClass *>(klass));
             //LOGD("type name : %s", il2cpp_type_get_name(type));
-#ifdef VersionAbove2020dot2
-            auto klassIndex = type->data.__klassIndex;
-#else
-            auto klassIndex = type->data.klassIndex;
-#endif
-            if (outPuts[klassIndex].empty()) {
-                outPuts[klassIndex] = dump_type(type);
-            }
+            auto outPut = imageStr.str() + dump_type(type);
+            outPuts.push_back(outPut);
         }
     }
 #else
@@ -404,6 +396,8 @@ void il2cpp_dump(void *handle, char *outDir) {
     LOGI("dumping...");
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
+        std::stringstream imageStr;
+        imageStr << "\n// Dll : " << image->name;
         //LOGD("image name : %s", image->name);
         auto imageName = std::string(image->name);
         auto pos = imageName.rfind('.');
@@ -424,10 +418,8 @@ void il2cpp_dump(void *handle, char *outDir) {
             auto klass = il2cpp_class_from_system_type((Il2CppReflectionType *) items[j]);
             auto type = il2cpp_class_get_type(klass);
             //LOGD("type name : %s", il2cpp_type_get_name(type));
-            auto klassIndex = type->data.klassIndex;
-            if (outPuts[klassIndex].empty()) {
-                outPuts[klassIndex] = dump_type(type);
-            }
+            auto outPut = imageStr.str() + dump_type(type);
+            outPuts.push_back(outPut);
         }
     }
 #endif
@@ -435,13 +427,9 @@ void il2cpp_dump(void *handle, char *outDir) {
     auto outPath = std::string(outDir).append("/files/dump.cs");
     std::ofstream outStream(outPath);
     outStream << imageOutput.str();
-    for (int i = 0; i < typeDefinitionsCount; ++i) {
-        if (!outPuts[i].empty()) {
-            outStream << outPuts[i];
-        } else {
-            // <Module> always missing
-            //LOGW("miss typeDefinition: %d", i);
-        }
+    auto count = outPuts.size();
+    for (int i = 0; i < count; ++i) {
+        outStream << outPuts[i];
     }
     outStream.close();
     LOGI("dump done!");

@@ -3,17 +3,17 @@
 
 LiteMutableArray::LiteMutableArray(int initCapacity) {
   unsigned int arraySize = 0;
-  arraySize              = initCapacity * sizeof(LiteObject *);
-  array                  = (const LiteObject **)LiteMemOpt::alloc(arraySize);
-  array_count            = 0;
-  array_capacity         = initCapacity;
+  arraySize = initCapacity * sizeof(LiteObject *);
+  array = (const LiteObject **)LiteMemOpt::alloc(arraySize);
+  array_count = 0;
+  array_capacity = initCapacity;
 }
 
 LiteMutableArray::~LiteMutableArray() {
   release();
 }
 
-LiteObject *LiteMutableArray::getObject(const int index) {
+LiteObject *LiteMutableArray::getObject(const unsigned int index) {
   return (LiteObject *)array[index];
 }
 
@@ -43,9 +43,9 @@ unsigned int LiteMutableArray::ensureCapacity(unsigned int newCapacity) {
   newCapacity = (int)ALIGN(newCapacity + CAPACITY_STEP, CAPACITY_STEP);
 
   // alloc new buffer
-  int                newSize;
+  int newSize;
   const LiteObject **newArray;
-  newSize  = sizeof(LiteObject *) * newCapacity;
+  newSize = sizeof(LiteObject *) * newCapacity;
   newArray = (const LiteObject **)LiteMemOpt::alloc(newSize);
   if (newArray == nullptr) {
     return 0;
@@ -63,7 +63,7 @@ unsigned int LiteMutableArray::ensureCapacity(unsigned int newCapacity) {
   LiteMemOpt::free(array, originArraySize);
 
   // update info
-  this->array          = newArray;
+  this->array = newArray;
   this->array_capacity = newCapacity;
 
   return newCapacity;
@@ -72,14 +72,14 @@ unsigned int LiteMutableArray::ensureCapacity(unsigned int newCapacity) {
 // impl iterator delegate
 bool LiteMutableArray::initIterator(void *iterator) const {
   unsigned int *ndxPtr = (unsigned int *)iterator;
-  *ndxPtr              = 0;
+  *ndxPtr = 0;
   return true;
 }
 
 // impl iterator delegate
 bool LiteMutableArray::getNextObjectForIterator(void *iterator, LiteObject **ret) const {
   unsigned int *ndxPtr = (unsigned int *)iterator;
-  unsigned int  ndx    = (*ndxPtr)++;
+  unsigned int ndx = (*ndxPtr)++;
 
   if (ndx < array_count) {
     *ret = (LiteObject *)array[ndx];
@@ -93,7 +93,7 @@ bool LiteMutableArray::getNextObjectForIterator(void *iterator, LiteObject **ret
 void LiteMutableArray::release() {
   if (array != NULL) {
     unsigned int arraySize = 0;
-    arraySize              = array_capacity * sizeof(LiteObject *);
+    arraySize = array_capacity * sizeof(LiteObject *);
     LiteMemOpt::free(array, arraySize);
 
     array = NULL;

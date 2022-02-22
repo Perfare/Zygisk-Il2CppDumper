@@ -24,6 +24,10 @@ void log_switch_to_file(const char *path);
 #endif
 int log_internal_impl(unsigned int level, const char *, ...);
 
+#if defined(LOGGING_DISABLE)
+#define LOG_FUNCTION_IMPL(...)
+#endif
+
 #ifdef __cplusplus
 }
 #endif
@@ -40,18 +44,15 @@ extern "C" {
 #define LOG(level, fmt, ...)                                                                                           \
   do {                                                                                                                 \
     if (LOG_TAG)                                                                                                       \
-      LOG_FUNCTION_IMPL(level, "[*] [%s] " fmt "\n", LOG_TAG, ##__VA_ARGS__);                                                    \
+      LOG_FUNCTION_IMPL(level, "[*] [%s] " fmt "\n", LOG_TAG, ##__VA_ARGS__);                                          \
     else                                                                                                               \
-      LOG_FUNCTION_IMPL(level, "[*] " fmt "\n", ##__VA_ARGS__);                                                                  \
+      LOG_FUNCTION_IMPL(level, "[*] " fmt "\n", ##__VA_ARGS__);                                                        \
   } while (0)
 
 #define RAW_LOG(level, fmt, ...)                                                                                       \
   do {                                                                                                                 \
-    LOG_FUNCTION_IMPL(level, fmt, ##__VA_ARGS__);                                                                                \
+    LOG_FUNCTION_IMPL(level, fmt, ##__VA_ARGS__);                                                                      \
   } while (0)
-
-#if defined(LOGGING_DEBUG)
-#define DLOG(level, fmt, ...) LOG(level, fmt, ##__VA_ARGS__)
 
 #define FATAL(fmt, ...)                                                                                                \
   do {                                                                                                                 \
@@ -65,15 +66,24 @@ extern "C" {
     RAW_LOG(-1, "[!] [%s:%d:%s]: \n", __FILE__, __LINE__, __func__);                                                   \
     RAW_LOG(-1, "[!] " fmt "\n", ##__VA_ARGS__);                                                                       \
   } while (0)
+
+#define ERROR_TRACE_LOG()                                                                                              \
+  do {                                                                                                                 \
+    RAW_LOG(-1, "[!] %s:%d:%s\n", __FILE__, __LINE__, __func__);                                                       \
+  } while (0)
+
+#define INVOKE_TRACE_LOG()                                                                                             \
+  do {                                                                                                                 \
+    RAW_LOG(-1, "[%s] %s:%d:%s\n", __TIME__, __FILE_NAME__, __LINE__, __func__);                                       \
+  } while (0)
+
+#if defined(LOGGING_DEBUG)
+#define DLOG(level, fmt, ...) LOG(level, fmt, ##__VA_ARGS__)
 #else
 #define DLOG(level, fmt, ...)
-
-#define FATAL(fmt, ...)
-
-#define ERROR_LOG(fmt, ...)
 #endif
 
 #define UNIMPLEMENTED() FATAL("%s\n", "unimplemented code!!!")
-#define UNREACHABLE()   FATAL("%s\n", "unreachable code!!!")
+#define UNREACHABLE() FATAL("%s\n", "unreachable code!!!")
 
 #endif

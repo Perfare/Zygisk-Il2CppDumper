@@ -1,18 +1,18 @@
 #ifndef UNIFIED_INTERFACE_STD_MEMORY_H
 #define UNIFIED_INTERFACE_STD_MEMORY_H
 
-#include "common/headers/common_header.h"
+#include "common_header.h"
 
 enum MemoryPermission { kNoAccess, kRead, kReadWrite, kReadWriteExecute, kReadExecute };
 
 typedef struct _MemoryRange {
-  void * address;
+  void *address;
   size_t length;
 } MemoryRange;
 
 typedef struct _MemoryRegion {
-  void *           address;
-  size_t           length;
+  void *address;
+  size_t length;
   MemoryPermission permission;
 } MemoryRegion;
 

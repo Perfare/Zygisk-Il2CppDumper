@@ -1,4 +1,4 @@
-#include "GlobalOffsetTableHook/global_offset_table_hook.h"
+#include "global_offset_table_hook.h"
 
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
@@ -15,46 +15,46 @@
 
 #include <vector>
 
-#include "common/headers/common_header.h"
+#include "common_header.h"
 
 #include "logging/logging.h"
 
 #include "PlatformUtil/ProcessRuntimeUtility.h"
 
 #if defined(__LP64__)
-typedef struct mach_header_64     mach_header_t;
+typedef struct mach_header_64 mach_header_t;
 typedef struct segment_command_64 segment_command_t;
-typedef struct section_64         section_t;
-typedef struct nlist_64           nlist_t;
+typedef struct section_64 section_t;
+typedef struct nlist_64 nlist_t;
 #define LC_SEGMENT_ARCH_DEPENDENT LC_SEGMENT_64
 #else
-typedef struct mach_header     mach_header_t;
+typedef struct mach_header mach_header_t;
 typedef struct segment_command segment_command_t;
-typedef struct section         section_t;
-typedef struct nlist           nlist_t;
+typedef struct section section_t;
+typedef struct nlist nlist_t;
 #define LC_SEGMENT_ARCH_DEPENDENT LC_SEGMENT
 #endif
 
 static void *iterate_indirect_symtab(char *symbol_name, section_t *section, intptr_t slide, nlist_t *symtab,
                                      char *strtab, uint32_t *indirect_symtab) {
-  const bool is_data_const            = strcmp(section->segname, "__DATA_CONST") == 0;
-  uint32_t * indirect_symbol_indices  = indirect_symtab + section->reserved1;
-  void **    indirect_symbol_bindings = (void **)((uintptr_t)slide + section->addr);
-  
-  vm_prot_t  old_protection           = VM_PROT_READ;
+  const bool is_data_const = strcmp(section->segname, "__DATA_CONST") == 0;
+  uint32_t *indirect_symbol_indices = indirect_symtab + section->reserved1;
+  void **indirect_symbol_bindings = (void **)((uintptr_t)slide + section->addr);
+
+  vm_prot_t old_protection = VM_PROT_READ;
   if (is_data_const) {
     mprotect(indirect_symbol_bindings, section->size, PROT_READ | PROT_WRITE);
   }
-  
+
   for (uint i = 0; i < section->size / sizeof(void *); i++) {
     uint32_t symtab_index = indirect_symbol_indices[i];
     if (symtab_index == INDIRECT_SYMBOL_ABS || symtab_index == INDIRECT_SYMBOL_LOCAL ||
         symtab_index == (INDIRECT_SYMBOL_LOCAL | INDIRECT_SYMBOL_ABS)) {
       continue;
     }
-    uint32_t strtab_offset             = symtab[symtab_index].n_un.n_strx;
-    char *   local_symbol_name         = strtab + strtab_offset;
-    bool     symbol_name_longer_than_1 = symbol_name[0] && symbol_name[1];
+    uint32_t strtab_offset = symtab[symtab_index].n_un.n_strx;
+    char *local_symbol_name = strtab + strtab_offset;
+    bool symbol_name_longer_than_1 = symbol_name[0] && symbol_name[1];
     if (strcmp(local_symbol_name, symbol_name) == 0) {
       return &indirect_symbol_bindings[i];
     }
@@ -64,7 +64,7 @@ static void *iterate_indirect_symtab(char *symbol_name, section_t *section, intp
       }
     }
   }
-  
+
   if (is_data_const && 0) {
     int protection = 0;
     if (old_protection & VM_PROT_READ) {
@@ -82,9 +82,9 @@ static void *iterate_indirect_symtab(char *symbol_name, section_t *section, intp
 }
 
 static void *get_global_offset_table_stub(mach_header_t *header, char *symbol_name) {
-  segment_command_t *      curr_seg_cmd;
-  segment_command_t *      text_segment, *data_segment, *linkedit_segment;
-  struct symtab_command *  symtab_cmd   = NULL;
+  segment_command_t *curr_seg_cmd;
+  segment_command_t *text_segment, *data_segment, *linkedit_segment;
+  struct symtab_command *symtab_cmd = NULL;
   struct dysymtab_command *dysymtab_cmd = NULL;
 
   uintptr_t cur = (uintptr_t)header + sizeof(mach_header_t);
@@ -109,11 +109,11 @@ static void *get_global_offset_table_stub(mach_header_t *header, char *symbol_na
     return NULL;
   }
 
-  uintptr_t slide         = (uintptr_t)header - (uintptr_t)text_segment->vmaddr;
+  uintptr_t slide = (uintptr_t)header - (uintptr_t)text_segment->vmaddr;
   uintptr_t linkedit_base = (uintptr_t)slide + linkedit_segment->vmaddr - linkedit_segment->fileoff;
-  nlist_t * symtab        = (nlist_t *)(linkedit_base + symtab_cmd->symoff);
-  char *    strtab        = (char *)(linkedit_base + symtab_cmd->stroff);
-  uint32_t  symtab_count  = symtab_cmd->nsyms;
+  nlist_t *symtab = (nlist_t *)(linkedit_base + symtab_cmd->symoff);
+  char *strtab = (char *)(linkedit_base + symtab_cmd->stroff);
+  uint32_t symtab_count = symtab_cmd->nsyms;
 
   uint32_t *indirect_symtab = (uint32_t *)(linkedit_base + dysymtab_cmd->indirectsymoff);
 
@@ -143,7 +143,7 @@ static void *get_global_offset_table_stub(mach_header_t *header, char *symbol_na
   return NULL;
 }
 
-int DobbyGlobalOffsetTableReplace(char *image_name, char *symbol_name, void *fake_func, void **orig_func_ptr) {
+PUBLIC int DobbyGlobalOffsetTableReplace(char *image_name, char *symbol_name, void *fake_func, void **orig_func_ptr) {
   std::vector<RuntimeModule> ProcessModuleMap = ProcessRuntimeUtility::GetProcessModuleMap();
 
   for (auto module : ProcessModuleMap) {
@@ -151,7 +151,7 @@ int DobbyGlobalOffsetTableReplace(char *image_name, char *symbol_name, void *fak
       continue;
 
     addr_t header = (addr_t)module.load_address;
-    size_t slide  = 0;
+    size_t slide = 0;
 
 #if 0
     if (header) {
@@ -161,12 +161,12 @@ int DobbyGlobalOffsetTableReplace(char *image_name, char *symbol_name, void *fak
 #endif
 
 #if 0
-    LOG(1, "resolve image: %s", path);
+    LOG(1, "resolve image: %s", module.path);
 #endif
 
     uint32_t nlist_count = 0;
     nlist_t *nlist_array = 0;
-    char *   string_pool = 0;
+    char *string_pool = 0;
 
     void *stub = get_global_offset_table_stub((mach_header_t *)header, symbol_name);
     if (stub) {
@@ -177,14 +177,16 @@ int DobbyGlobalOffsetTableReplace(char *image_name, char *symbol_name, void *fak
       orig_func = ptrauth_sign_unauthenticated(orig_func, ptrauth_key_asia, 0);
 #endif
       *orig_func_ptr = orig_func;
-      
+
 #if __has_feature(ptrauth_calls)
       fake_func = (void *)ptrauth_strip(fake_func, ptrauth_key_asia);
       fake_func = ptrauth_sign_unauthenticated(fake_func, ptrauth_key_asia, stub);
 #endif
       *(void **)stub = fake_func;
-      return RT_SUCCESS;
     }
+
+    if (image_name)
+      return 0;
   }
-  return RT_FAILED;
+  return -1;
 }

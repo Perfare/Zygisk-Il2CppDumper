@@ -14,9 +14,9 @@ class ThreadLocalStorageInterface {
 
   // Thread-local storage.
   static LocalStorageKey CreateThreadLocalKey();
-  static void            DeleteThreadLocalKey(LocalStorageKey key);
-  static void *          GetThreadLocal(LocalStorageKey key);
-  static int             GetThreadLocalInt(LocalStorageKey key) {
+  static void DeleteThreadLocalKey(LocalStorageKey key);
+  static void *GetThreadLocal(LocalStorageKey key);
+  static int GetThreadLocalInt(LocalStorageKey key) {
     return static_cast<int>(reinterpret_cast<intptr_t>(GetThreadLocal(key)));
   }
   static void SetThreadLocal(LocalStorageKey key, void *value);
@@ -67,6 +67,8 @@ private:
 class OSMemory {
 public:
   static int PageSize();
+  
+  static int AllocPageSize();
 
   static void *Allocate(void *address, int size, MemoryPermission access);
 

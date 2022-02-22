@@ -1,4 +1,4 @@
-#include "common/macros/platform_macro.h"
+#include "platform_macro.h"
 #if defined(TARGET_ARCH_ARM64)
 
 #include "dobby_internal.h"
@@ -6,7 +6,7 @@
 #include "core/modules/assembler/assembler.h"
 #include "core/modules/assembler/assembler-arm64.h"
 
-#include "TrampolineBridge/ClosureTrampolineBridge/closure-trampoline-common-handler.h"
+#include "TrampolineBridge/ClosureTrampolineBridge/common-bridge-handler.h"
 
 using namespace zz;
 using namespace zz::arm64;
@@ -14,7 +14,6 @@ using namespace zz::arm64;
 static void *closure_bridge = NULL;
 
 void *get_closure_bridge() {
-
   // if already initialized, just return.
   if (closure_bridge)
     return closure_bridge;
@@ -25,8 +24,8 @@ void *get_closure_bridge() {
   closure_bridge = closure_bridge_template;
 // otherwise, use the Assembler build the closure_bridge
 #else
-#define _                              turbo_assembler_.
-#define MEM(reg, offset)               MemOperand(reg, offset)
+#define _ turbo_assembler_.
+#define MEM(reg, offset) MemOperand(reg, offset)
 #define MEM_EXT(reg, offset, addrmode) MemOperand(reg, offset, addrmode)
   TurboAssembler turbo_assembler_(0);
 
@@ -81,7 +80,7 @@ void *get_closure_bridge() {
   _ add(TMP_REG_0, SP, 2 * 8);                          // closure trampoline reserved
   _ add(TMP_REG_0, TMP_REG_0, 2 * 8 + 30 * 8 + 8 * 16); // x0, x1-x30, q0-q7 reserved
 #if defined(FULL_FLOATING_POINT_REGISTER_PACK)
-  _ add(TMP_REG_0, TMP_REG_0, 24 * 16); // q8-q31 reserved
+  _ add(TMP_REG_0, TMP_REG_0, 24 * 16);                 // q8-q31 reserved
 #endif
 
   // alloc stack, store original sp
@@ -150,9 +149,9 @@ void *get_closure_bridge() {
   _ ret(); // AKA br x30
 
   AssemblyCodeChunk *code = AssemblyCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
-  closure_bridge          = (void *)code->raw_instruction_start();
+  closure_bridge = (void *)code->raw_instruction_start();
 
-  DLOG(1, "[closure bridge] Build the closure bridge at %p", closure_bridge);
+  DLOG(0, "[closure bridge] Build the closure bridge at %p", closure_bridge);
 #endif
   return (void *)closure_bridge;
 }

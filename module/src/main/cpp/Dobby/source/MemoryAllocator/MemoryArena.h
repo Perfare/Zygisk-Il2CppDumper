@@ -6,9 +6,9 @@
 #include "PlatformUnifiedInterface/StdMemory.h"
 
 struct MemoryChunk : MemoryRange {
-  inline void init_region_range(addr_t address, int size) {
+  inline void init_region_range(addr_t address, size_t size) {
     this->address = (void *)address;
-    this->length  = size;
+    this->length = size;
   }
 
   inline void re_init_region_range(addr_t address, int size) {
@@ -31,9 +31,9 @@ struct MemoryChunk : MemoryRange {
 typedef MemoryChunk AssemblyCodeChunk, WritableDataChunk;
 
 typedef struct {
-  MemoryChunk       page;
-  addr_t            page_cursor;
-  MemoryPermission  permission;
+  MemoryChunk page;
+  addr_t page_cursor;
+  MemoryPermission permission;
   LiteMutableArray *chunks;
 } PageChunk;
 

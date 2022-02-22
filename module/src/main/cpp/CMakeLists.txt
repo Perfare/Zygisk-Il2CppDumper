@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.18.1)
 
 if (NOT DEFINED MODULE_NAME)
     message(FATAL_ERROR "MODULE_NAME is not set")
@@ -13,16 +13,13 @@ include_directories(
 macro(SET_OPTION option value)
     set(${option} ${value} CACHE INTERNAL "" FORCE)
 endmacro()
+SET_OPTION(DOBBY_DEBUG OFF)
 SET_OPTION(DOBBY_GENERATE_SHARED OFF)
 add_subdirectory(${DobbyHome} dobby)
 
-add_definitions(-DRIRU_MODULE)
-
-configure_file(template/config.cpp config.cpp)
-
 message("Build type: ${CMAKE_BUILD_TYPE}")
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 
 set(LINKER_FLAGS "-ffixed-x18 -Wl,--hash-style=both")
 set(C_FLAGS "-Werror=format -fdata-sections -ffunction-sections")
@@ -41,12 +38,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${C_FLAGS} ${CXX_FLAGS}")
 set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${LINKER_FLAGS}")
 set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${LINKER_FLAGS}")
 
-find_package(riru REQUIRED CONFIG)
-
-include_directories(include)
-
-add_library(${MODULE_NAME} SHARED main.cpp ${CMAKE_CURRENT_BINARY_DIR}/config.cpp hook.cpp il2cpp_dump.cpp)
-target_link_libraries(${MODULE_NAME} log riru::riru dobby)
+add_library(${MODULE_NAME} SHARED main.cpp hook.cpp il2cpp_dump.cpp)
+target_link_libraries(${MODULE_NAME} log dobby)
 
 if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_custom_command(TARGET ${MODULE_NAME} POST_BUILD

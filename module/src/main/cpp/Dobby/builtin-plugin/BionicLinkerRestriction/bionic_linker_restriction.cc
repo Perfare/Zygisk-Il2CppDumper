@@ -17,11 +17,13 @@
 #include "dobby.h"
 #include "dobby_symbol_resolver.h"
 
-#include "common/headers/common_header.h"
+#include "common_header.h"
 
 #undef LOG_TAG
 #define LOG_TAG "AndroidLinkerRestriction"
 
+#undef Q
+#define Q 29
 // impl at "dobby_symbol_resolver.cc"
 extern void *resolve_elf_internal_symbol(const char *library_name, const char *symbol_name);
 
@@ -33,18 +35,18 @@ static int get_android_system_version() {
   return os_version_int;
 }
 
-static char *get_android_linker_path() {
+static const char *get_android_linker_path() {
 #if __LP64__
-  if (get_android_system_version() >= 10) {
-    return "/apex/com.android.runtime/bin/linker64";
+  if (get_android_system_version() >= Q) {
+    return (const char *)"/apex/com.android.runtime/bin/linker64";
   } else {
-    return "/system/bin/linker64";
+    return (const char *)"/system/bin/linker64";
   }
 #else
-  if (get_android_system_version() >= 10) {
-    return "/apex/com.android.runtime/bin/linker";
+  if (get_android_system_version() >= Q) {
+    return (const char *)"/apex/com.android.runtime/bin/linker";
   } else {
-    return "/system/bin/linker";
+    return (const char *)"/system/bin/linker";
   }
 #endif
 }
@@ -86,7 +88,7 @@ std::vector<soinfo_t> linker_get_solist() {
 
     // Generate the name for an offset.
 #define PARAM_OFFSET(type_, member_) __##type_##__##member_##__offset_
-#define STRUCT_OFFSET                PARAM_OFFSET
+#define STRUCT_OFFSET PARAM_OFFSET
   int STRUCT_OFFSET(solist, next) = 0;
   for (size_t i = 0; i < 1024 / sizeof(void *); i++) {
     if (*(addr_t *)((addr_t)solist_head + i * sizeof(void *)) == somain) {
@@ -98,7 +100,7 @@ std::vector<soinfo_t> linker_get_solist() {
   linker_solist.push_back(solist_head);
 
   addr_t sonext = 0;
-  sonext        = *(addr_t *)((addr_t)solist_head + STRUCT_OFFSET(solist, next));
+  sonext = *(addr_t *)((addr_t)solist_head + STRUCT_OFFSET(solist, next));
   while (sonext) {
     linker_solist.push_back((void *)sonext);
     sonext = *(addr_t *)((addr_t)sonext + STRUCT_OFFSET(solist, next));
@@ -123,7 +125,7 @@ uintptr_t linker_soinfo_to_handle(soinfo_t soinfo) {
   return _linker_soinfo_to_handle(soinfo);
 }
 
-typedef void *      android_namespace_t;
+typedef void *android_namespace_t;
 android_namespace_t linker_soinfo_get_primary_namespace(soinfo_t soinfo) {
   static android_namespace_t (*_get_primary_namespace)(soinfo_t) = NULL;
   if (!_get_primary_namespace)
@@ -143,16 +145,16 @@ void linker_iterate_soinfo(int (*cb)(soinfo_t soinfo)) {
 
 static int iterate_soinfo_cb(soinfo_t soinfo) {
   android_namespace_t ns = NULL;
-  ns                     = linker_soinfo_get_primary_namespace(soinfo);
+  ns = linker_soinfo_get_primary_namespace(soinfo);
   LOG(1, "lib: %s", linker_soinfo_get_realpath(soinfo));
 
   // set is_isolated_ as false
   // no need for this actually
-  int STRUCT_OFFSET(android_namespace_t, is_isolated_)                        = 0x8;
+  int STRUCT_OFFSET(android_namespace_t, is_isolated_) = 0x8;
   *(uint8_t *)((addr_t)ns + STRUCT_OFFSET(android_namespace_t, is_isolated_)) = false;
 
   std::vector<std::string> ld_library_paths = {"/system/lib64", "/sytem/lib"};
-  if (get_android_system_version() >= 10) {
+  if (get_android_system_version() >= Q) {
     ld_library_paths.push_back("/apex/com.android.runtime/lib64");
     ld_library_paths.push_back("/apex/com.android.runtime/lib");
   }

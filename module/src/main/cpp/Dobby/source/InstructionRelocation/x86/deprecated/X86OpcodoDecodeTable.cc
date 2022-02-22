@@ -1,4 +1,4 @@
-#include "common/macros/platform_macro.h"
+#include "platform_macro.h"
 #if defined(TARGET_ARCH_IA32) || defined(TARGET_ARCH_X64)
 
 #include "./X86OpcodoDecodeTable.h"
@@ -103,7 +103,7 @@ void _DecodeDisplacement8(InstrMnemonic *instr, addr_t p) {
 }
 
 void _DecodeDisplacement32(InstrMnemonic *instr, addr_t p) {
-  instr->instr.DisplacementOffset      = instr->len;
+  instr->instr.DisplacementOffset = instr->len;
   *(dword *)&instr->instr.Displacement = *(byte_t *)p;
   instr->len += 4;
 }

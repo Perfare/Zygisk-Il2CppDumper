@@ -1,7 +1,7 @@
 #ifndef CORE_ASSEMBLER_X86_SHARED_H
 #define CORE_ASSEMBLER_X86_SHARED_H
 
-#include "common/headers/common_header.h"
+#include "common_header.h"
 
 #include "core/arch/x64/registers-x64.h"
 #include "core/modules/assembler/assembler.h"
@@ -26,7 +26,7 @@ public:
   enum PseudoLabelType { kDisp32_off_9 };
 
   typedef struct _PseudoLabelInstruction {
-    int             position_;
+    int position_;
     PseudoLabelType type_;
   } PseudoLabelInstruction;
 
@@ -35,7 +35,7 @@ public:
   }
 
   ~PseudoLabel(void) {
-    for (size_t i = 0; i < instructions_.getCount(); i++) {
+    for (unsigned i = 0; i < instructions_.getCount(); i++) {
       PseudoLabelInstruction *item = (PseudoLabelInstruction *)instructions_.getObject(i);
       delete item;
     }
@@ -52,7 +52,7 @@ public:
       UNREACHABLE();
     CodeBuffer *_buffer = buffer;
 
-    for (size_t i = 0; i < instructions_.getCount(); i++) {
+    for (unsigned i = 0; i < instructions_.getCount(); i++) {
       PseudoLabelInstruction *instruction = (PseudoLabelInstruction *)instructions_.getObject(i);
 
       int32_t offset = pos() - instruction->position_;
@@ -75,8 +75,8 @@ public:
 
   void link_to(int pos, PseudoLabelType type) {
     PseudoLabelInstruction *instruction = new PseudoLabelInstruction;
-    instruction->position_              = pos;
-    instruction->type_                  = type;
+    instruction->position_ = pos;
+    instruction->type_ = type;
     instructions_.pushObject((LiteObject *)instruction);
   }
 
@@ -100,9 +100,9 @@ private:
   int data_size_;
 };
 
-#define ModRM_Mod(byte)       ((byte & 0b11000000) >> 6)
+#define ModRM_Mod(byte) ((byte & 0b11000000) >> 6)
 #define ModRM_RegOpcode(byte) ((byte & 0b00111000) >> 3)
-#define ModRM_RM(byte)        (byte & 0b00000111)
+#define ModRM_RM(byte) (byte & 0b00000111)
 
 typedef union _ModRM {
   byte_t ModRM;
@@ -233,7 +233,7 @@ protected:
       rex_ |= REX_B;
     }
     encoding_[0] = (mod << 6) | (rm.code() & 7);
-    length_      = 1;
+    length_ = 1;
   }
 
   void SetSIB(ScaleFactor scale, Register index, Register base) {
@@ -248,7 +248,7 @@ protected:
       rex_ |= REX_X;
 
     encoding_[1] = (scale << 6) | ((index.code() & 7) << 3) | (base.code() & 7);
-    length_      = 2;
+    length_ = 2;
   }
 
   void SetDisp8(int8_t disp) {
@@ -286,8 +286,8 @@ class Address : public Operand {
 public:
   Address(Register base, int32_t disp) {
     int base_ = base.code();
-    int rbp_  = rbp.code();
-    int rsp_  = rsp.code();
+    int rbp_ = rbp.code();
+    int rsp_ = rsp.code();
     if ((disp == 0) && ((base_ & 7) != rbp_)) {
       SetModRM(0, base);
       if ((base_ & 7) == rsp_) {
@@ -661,7 +661,7 @@ public:
 
   ~TurboAssembler() {
     if (data_labels_) {
-      for (size_t i = 0; i < data_labels_->getCount(); i++) {
+      for (unsigned i = 0; i < data_labels_->getCount(); i++) {
         RelocLabelEntry *label = (RelocLabelEntry *)data_labels_->getObject(i);
         delete label;
       }
@@ -698,7 +698,7 @@ public:
   // RelocLabelEntry
 
   void PseudoBind(PseudoLabel *label) {
-    const addr_t bound_pc = buffer_->getSize();
+    const uint32_t bound_pc = buffer_->getSize();
     label->bind_to(bound_pc);
     // If some instructions have been wrote, before the label bound, we need link these `confused` instructions
     if (label->has_confused_instructions()) {
@@ -709,7 +709,7 @@ public:
   void RelocBind() {
     if (data_labels_ == NULL)
       return;
-    for (size_t i = 0; i < data_labels_->getCount(); i++) {
+    for (unsigned i = 0; i < data_labels_->getCount(); i++) {
       RelocLabelEntry *label = (RelocLabelEntry *)data_labels_->getObject(i);
       PseudoBind(label);
       EmitInt64(label->data());

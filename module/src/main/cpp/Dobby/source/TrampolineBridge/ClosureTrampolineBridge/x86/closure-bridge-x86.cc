@@ -1,11 +1,11 @@
-#include "common/macros/platform_macro.h"
+#include "platform_macro.h"
 #if defined(TARGET_ARCH_IA32)
 
 #include "dobby_internal.h"
 
 #include "core/modules/assembler/assembler-ia32.h"
 
-#include "TrampolineBridge/ClosureTrampolineBridge/closure-trampoline-common-handler.h"
+#include "TrampolineBridge/ClosureTrampolineBridge/common-bridge-handler.h"
 
 using namespace zz;
 using namespace zz::x86;
@@ -26,7 +26,7 @@ void *get_closure_bridge() {
 #else
 
 // otherwise, use the Assembler build the closure_bridge
-#define _  turbo_assembler_.
+#define _ turbo_assembler_.
 #define __ turbo_assembler_.GetCodeBuffer()->
 
   char *pushfd = (char *)"\x9c";
@@ -104,7 +104,7 @@ void *get_closure_bridge() {
   AssemblyCodeChunk *code = AssemblyCodeBuilder::FinalizeFromTurboAssembler(&turbo_assembler_);
   closure_bridge = (void *)code->raw_instruction_start();
 
-  DLOG(1, "[closure bridge] Build the closure bridge at %p", closure_bridge);
+  DLOG(0, "[closure bridge] Build the closure bridge at %p", closure_bridge);
 #endif
   return (void *)closure_bridge;
 }

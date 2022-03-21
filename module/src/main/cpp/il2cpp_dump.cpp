@@ -134,10 +134,9 @@ std::string dump_method(Il2CppClass *klass) {
             auto return_class = il2cpp_class_from_type(return_type);
             outPut << return_class->name << " " << method->name << "(";
             for (int i = 0; i < method->parameters_count; ++i) {
-                auto parameters = method->parameters[i];
-                auto parameter_type = parameters.parameter_type;
-                auto attrs = parameter_type->attrs;
-                if (parameter_type->byref) {
+                auto param = il2cpp_method_get_param(method, i);
+                auto attrs = param->attrs;
+                if (param->byref) {
                     if (attrs & PARAM_ATTRIBUTE_OUT && !(attrs & PARAM_ATTRIBUTE_IN)) {
                         outPut << "out ";
                     } else if (attrs & PARAM_ATTRIBUTE_IN && !(attrs & PARAM_ATTRIBUTE_OUT)) {
@@ -153,8 +152,8 @@ std::string dump_method(Il2CppClass *klass) {
                         outPut << "[Out] ";
                     }
                 }
-                auto parameter_class = il2cpp_class_from_type(parameter_type);
-                outPut << parameter_class->name << " " << parameters.name;
+                auto parameter_class = il2cpp_class_from_type(param);
+                outPut << parameter_class->name << " " << il2cpp_method_get_param_name(method, i);
                 outPut << ", ";
             }
             if (method->parameters_count > 0) {
@@ -181,7 +180,8 @@ std::string dump_property(Il2CppClass *klass) {
                 prop_class = il2cpp_class_from_type(prop->get->return_type);
             } else if (prop->set) {
                 outPut << get_method_modifier(prop->set->flags);
-                prop_class = il2cpp_class_from_type(prop->set->parameters[0].parameter_type);
+                auto param = il2cpp_method_get_param(prop->set, 0);
+                prop_class = il2cpp_class_from_type(param);
             }
             if (prop_class) {
                 outPut << prop_class->name << " " << prop->name << " { ";

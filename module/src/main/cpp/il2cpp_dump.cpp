@@ -106,7 +106,7 @@ std::string get_method_modifier(uint16_t flags) {
     return outPut.str();
 }
 
-std::string dump_method(Il2CppClass * klass) {
+std::string dump_method(Il2CppClass *klass) {
     std::stringstream outPut;
     if (klass->method_count > 0) {
         outPut << "\n\t// Methods\n";
@@ -167,7 +167,7 @@ std::string dump_method(Il2CppClass * klass) {
     return outPut.str();
 }
 
-std::string dump_property(Il2CppClass * klass) {
+std::string dump_property(Il2CppClass *klass) {
     std::stringstream outPut;
     if (klass->property_count > 0) {
         outPut << "\n\t// Properties\n";
@@ -175,7 +175,7 @@ std::string dump_property(Il2CppClass * klass) {
         while (auto prop = il2cpp_class_get_properties(klass, &iter)) {
             //TODO attribute
             outPut << "\t";
-            Il2CppClass * prop_class = nullptr;
+            Il2CppClass *prop_class = nullptr;
             if (prop->get) {
                 outPut << get_method_modifier(prop->get->flags);
                 prop_class = il2cpp_class_from_type(prop->get->return_type);
@@ -202,7 +202,7 @@ std::string dump_property(Il2CppClass * klass) {
     return outPut.str();
 }
 
-std::string dump_field(Il2CppClass * klass) {
+std::string dump_field(Il2CppClass *klass) {
     std::stringstream outPut;
     if (klass->field_count > 0) {
         outPut << "\n\t// Fields\n";
@@ -336,45 +336,53 @@ void il2cpp_dump(void *handle, char *outDir) {
     LOGI("VersionAbove2018dot3: off");
 #endif
     LOGI("il2cpp_handle: %p", handle);
-    Dl_info dlInfo;
-    void * get_assemblies = dlsym(handle,"il2cpp_domain_get_assemblies");
-    if(get_assemblies && dladdr(get_assemblies,&dlInfo))
-    {
-        il2cpp_handle = handle;
-        init_il2cpp_api();
-        auto domain = il2cpp_domain_get();
-        il2cpp_thread_attach(domain);
-        size_t size;
-        auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
-        uint32_t typeDefinitionsCount = 0;
-        std::stringstream imageOutput;
-        for (int i = 0; i < size; ++i) {
-            auto image = il2cpp_assembly_get_image(assemblies[i]);
-            imageOutput << "// Image " << i << ": " << image->name << " - " << "typeCount : "
-                        << image->typeCount << "\n";
-            typeDefinitionsCount += image->typeCount;
+
+    il2cpp_handle = handle;
+    init_il2cpp_api();
+    if (il2cpp_domain_get_assemblies) {
+        Dl_info dlInfo;
+        if (dladdr((void *) il2cpp_domain_get_assemblies, &dlInfo)) {
+            il2cpp_base = reinterpret_cast<uint64_t>(dlInfo.dli_fbase);
+        } else {
+            il2cpp_base = get_module_base("libil2cpp.so");
         }
-        LOGI("typeDefinitionsCount: %i", typeDefinitionsCount);
-        il2cpp_base = reinterpret_cast<uint64_t>(dlInfo.dli_fbase);
         LOGI("il2cpp_base: %" PRIx64"", il2cpp_base);
-        std::vector<std::string> outPuts;
+    } else {
+        LOGE("Failed to initialize il2cpp api.");
+        return;
+    }
+    auto domain = il2cpp_domain_get();
+    il2cpp_thread_attach(domain);
+
+    size_t size;
+    auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
+    uint32_t typeDefinitionsCount = 0;
+    std::stringstream imageOutput;
+    for (int i = 0; i < size; ++i) {
+        auto image = il2cpp_assembly_get_image(assemblies[i]);
+        imageOutput << "// Image " << i << ": " << image->name << " - " << "typeCount : "
+                    << image->typeCount << "\n";
+        typeDefinitionsCount += image->typeCount;
+    }
+    LOGI("typeDefinitionsCount: %i", typeDefinitionsCount);
+    std::vector<std::string> outPuts;
 #ifdef VersionAbove2018dot3
-        //使用il2cpp_image_get_class
-        for (int i = 0; i < size; ++i) {
-            auto image = il2cpp_assembly_get_image(assemblies[i]);
-            std::stringstream imageStr;
-            imageStr << "\n// Dll : " << image->name;
-            auto classCount = il2cpp_image_get_class_count(image);
-            for (int j = 0; j < classCount; ++j) {
-                auto klass = il2cpp_image_get_class(image, j);
-                auto type = il2cpp_class_get_type(const_cast<Il2CppClass *>(klass));
-                //LOGD("type name : %s", il2cpp_type_get_name(type));
-                auto outPut = imageStr.str() + dump_type(type);
-                outPuts.push_back(outPut);
-            }
+    //使用il2cpp_image_get_class
+    for (int i = 0; i < size; ++i) {
+        auto image = il2cpp_assembly_get_image(assemblies[i]);
+        std::stringstream imageStr;
+        imageStr << "\n// Dll : " << image->name;
+        auto classCount = il2cpp_image_get_class_count(image);
+        for (int j = 0; j < classCount; ++j) {
+            auto klass = il2cpp_image_get_class(image, j);
+            auto type = il2cpp_class_get_type(const_cast<Il2CppClass *>(klass));
+            //LOGD("type name : %s", il2cpp_type_get_name(type));
+            auto outPut = imageStr.str() + dump_type(type);
+            outPuts.push_back(outPut);
         }
+    }
 #else
-        //使用反射
+    //使用反射
     auto corlib = il2cpp_get_corlib();
     auto assemblyClass = il2cpp_class_from_name(corlib, "System.Reflection", "Assembly");
     auto assemblyLoad = il2cpp_class_get_method_from_name(assemblyClass, "Load", 1);
@@ -427,16 +435,14 @@ void il2cpp_dump(void *handle, char *outDir) {
         }
     }
 #endif
-        LOGI("write dump file");
-        auto outPath = std::string(outDir).append("/files/dump.cs");
-        std::ofstream outStream(outPath);
-        outStream << imageOutput.str();
-        auto count = outPuts.size();
-        for (int i = 0; i < count; ++i) {
-            outStream << outPuts[i];
-        }
-        outStream.close();
-        LOGI("dump done!");
+    LOGI("write dump file");
+    auto outPath = std::string(outDir).append("/files/dump.cs");
+    std::ofstream outStream(outPath);
+    outStream << imageOutput.str();
+    auto count = outPuts.size();
+    for (int i = 0; i < count; ++i) {
+        outStream << outPuts[i];
     }
-
+    outStream.close();
+    LOGI("dump done!");
 }

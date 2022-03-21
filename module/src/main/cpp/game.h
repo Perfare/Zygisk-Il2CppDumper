@@ -11,9 +11,6 @@
 // 2018.3.0f2 and up enable it
 #define VersionAbove2018dot3
 
-// 2021.1.0f1 and up enable it
-//#define VersionAbove2021dot1
-
 // UnityVersion Compatible list
 // 5.3.0f4     | 5.3.0f4 - 5.3.1f1         | v16
 // 5.3.2f1     | 5.3.2f1                   | v19

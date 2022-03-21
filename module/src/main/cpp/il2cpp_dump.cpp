@@ -206,6 +206,7 @@ std::string dump_field(Il2CppClass *klass) {
     std::stringstream outPut;
     if (klass->field_count > 0) {
         outPut << "\n\t// Fields\n";
+        auto is_enum = il2cpp_class_is_enum(klass);
         void *iter = nullptr;
         while (auto field = il2cpp_class_get_fields(klass, &iter)) {
             //TODO attribute
@@ -242,6 +243,12 @@ std::string dump_field(Il2CppClass *klass) {
             }
             auto field_class = il2cpp_class_from_type(field->type);
             outPut << field_class->name << " " << field->name;
+            //TODO 获取构造函数初始化后的字段值
+            if (attrs & FIELD_ATTRIBUTE_LITERAL && is_enum) {
+                uint64_t val = 0;
+                il2cpp_field_static_get_value(field, &val);
+                outPut << " = " << std::dec << val;
+            }
             outPut << "; // 0x" << std::hex << field->offset << "\n";
         }
     }
@@ -257,11 +264,8 @@ std::string dump_type(const Il2CppType *type) {
         outPut << "[Serializable]\n";
     }
     //TODO attribute
-#ifdef VersionAbove2021dot1
-    auto valuetype = type->valuetype;
-#else
-    auto valuetype = klass->valuetype;
-#endif
+    auto is_valuetype = il2cpp_class_is_valuetype(klass);
+    auto is_enum = il2cpp_class_is_enum(klass);
     auto visibility = flags & TYPE_ATTRIBUTE_VISIBILITY_MASK;
     switch (visibility) {
         case TYPE_ATTRIBUTE_PUBLIC:
@@ -287,21 +291,21 @@ std::string dump_type(const Il2CppType *type) {
         outPut << "static ";
     } else if (!(flags & TYPE_ATTRIBUTE_INTERFACE) && flags & TYPE_ATTRIBUTE_ABSTRACT) {
         outPut << "abstract ";
-    } else if (!valuetype && !klass->enumtype && flags & TYPE_ATTRIBUTE_SEALED) {
+    } else if (!is_valuetype && !is_enum && flags & TYPE_ATTRIBUTE_SEALED) {
         outPut << "sealed ";
     }
     if (flags & TYPE_ATTRIBUTE_INTERFACE) {
         outPut << "interface ";
-    } else if (klass->enumtype) {
+    } else if (is_enum) {
         outPut << "enum ";
-    } else if (valuetype) {
+    } else if (is_valuetype) {
         outPut << "struct ";
     } else {
         outPut << "class ";
     }
     outPut << klass->name; //TODO genericContainerIndex
     std::vector<std::string> extends;
-    if (!valuetype && !klass->enumtype && klass->parent) {
+    if (!is_valuetype && !is_enum && klass->parent) {
         auto parent_type = il2cpp_class_get_type(klass->parent);
         if (parent_type->type != IL2CPP_TYPE_OBJECT) {
             extends.emplace_back(klass->parent->name);
@@ -336,7 +340,7 @@ void il2cpp_dump(void *handle, char *outDir) {
     LOGI("VersionAbove2018dot3: off");
 #endif
     LOGI("il2cpp_handle: %p", handle);
-
+    //initialize
     il2cpp_handle = handle;
     init_il2cpp_api();
     if (il2cpp_domain_get_assemblies) {
@@ -344,6 +348,7 @@ void il2cpp_dump(void *handle, char *outDir) {
         if (dladdr((void *) il2cpp_domain_get_assemblies, &dlInfo)) {
             il2cpp_base = reinterpret_cast<uint64_t>(dlInfo.dli_fbase);
         } else {
+            LOGW("dladdr error, using get_module_base.");
             il2cpp_base = get_module_base("libil2cpp.so");
         }
         LOGI("il2cpp_base: %" PRIx64"", il2cpp_base);
@@ -353,7 +358,7 @@ void il2cpp_dump(void *handle, char *outDir) {
     }
     auto domain = il2cpp_domain_get();
     il2cpp_thread_attach(domain);
-
+    //start dump
     size_t size;
     auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
     uint32_t typeDefinitionsCount = 0;

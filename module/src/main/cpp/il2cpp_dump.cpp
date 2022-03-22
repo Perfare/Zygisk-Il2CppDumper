@@ -106,7 +106,7 @@ std::string get_method_modifier(uint16_t flags) {
     return outPut.str();
 }
 
-std::string dump_method(Il2CppClass *klass) {
+std::string dump_method(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->method_count > 0) {
         outPut << "\n\t// Methods\n";
@@ -166,7 +166,7 @@ std::string dump_method(Il2CppClass *klass) {
     return outPut.str();
 }
 
-std::string dump_property(Il2CppClass *klass) {
+std::string dump_property(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->property_count > 0) {
         outPut << "\n\t// Properties\n";
@@ -174,7 +174,7 @@ std::string dump_property(Il2CppClass *klass) {
         while (auto prop = il2cpp_class_get_properties(klass, &iter)) {
             //TODO attribute
             outPut << "\t";
-            Il2CppClass *prop_class = nullptr;
+            Il2CppClass * prop_class = nullptr;
             if (prop->get) {
                 outPut << get_method_modifier(prop->get->flags);
                 prop_class = il2cpp_class_from_type(prop->get->return_type);
@@ -202,7 +202,7 @@ std::string dump_property(Il2CppClass *klass) {
     return outPut.str();
 }
 
-std::string dump_field(Il2CppClass *klass) {
+std::string dump_field(Il2CppClass * klass) {
     std::stringstream outPut;
     if (klass->field_count > 0) {
         outPut << "\n\t// Fields\n";
@@ -359,6 +359,7 @@ void il2cpp_dump(void *handle, char *outDir) {
     auto domain = il2cpp_domain_get();
     il2cpp_thread_attach(domain);
     //start dump
+    LOGI("dumping...");
     size_t size;
     auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
     uint32_t typeDefinitionsCount = 0;
@@ -410,7 +411,6 @@ void il2cpp_dump(void *handle, char *outDir) {
     typedef void *(*Assembly_Load_ftn)(void *, Il2CppString *, void *);
 #endif
     typedef Il2CppArray *(*Assembly_GetTypes_ftn)(void *, void *);
-    LOGI("dumping...");
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
         std::stringstream imageStr;

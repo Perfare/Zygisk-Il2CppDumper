@@ -1,10 +1,12 @@
 # Zygisk-Il2CppDumper
-Zygisk版Il2CppDumper，在游戏运行时dump数据，用于绕过保护，加密以及混淆。
+Il2CppDumper with Zygisk, dump il2cpp data at runtime, can bypass protection, encryption and obfuscation.
 
-## 如何食用
-1. 安装[Magisk](https://github.com/topjohnwu/Magisk) v24以上版本并开启Zygisk
-2. 下载源码
-3. 编辑`game.h`, 修改游戏包名`GamePackageName`和Unity版本`UnityVersion`，`UnityVersion`的值请看文件内注释
-4. 使用Android Studio运行gradle任务`:module:assembleRelease`编译，zip包会生成在out文件夹下
-5. 在Magisk里安装模块
-6. 启动游戏，会在`/data/data/GamePackageName/files/`目录下生成`dump.cs`
+中文说明请戳[这里](README.zh-CN.md)
+
+## How to use
+1. Install [Magisk](https://github.com/topjohnwu/Magisk) v24 or later and enable Zygisk
+2. Download the source code
+3. Edit `game.h`, modify `GamePackageName` to the game package name
+4. Use Android Studio to run the gradle task `:module:assembleRelease` to compile, the zip package will be generated in the `out` folder
+5. Install modules in Magisk
+6. Start the game, `dump.cs` will be generated in the `/data/data/GamePackageName/files/` directory

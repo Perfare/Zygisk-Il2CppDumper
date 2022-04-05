@@ -22,5 +22,5 @@ jobs:
         ./gradlew :module:assembleRelease
     - uses: actions/upload-artifact@v3
       with:
-        name: zygisk-il2cppdumper.zip
+        name: zygisk-il2cppdumper
         path: out/magisk_module_release/

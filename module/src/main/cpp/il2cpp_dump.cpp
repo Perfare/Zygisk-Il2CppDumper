@@ -14,6 +14,7 @@
 #include "log.h"
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class.h"
+#include "script_helper.h"
 
 #define DO_API(r, n, p) r (*n) p
 
@@ -23,7 +24,8 @@
 
 static void *il2cpp_handle = nullptr;
 static uint64_t il2cpp_base = 0;
-
+static list<Dump> dumps;
+Dump dump;
 void init_il2cpp_api() {
 #define DO_API(r, n, p) n = (r (*) p)dlsym(il2cpp_handle, #n)
 
@@ -115,6 +117,8 @@ bool _il2cpp_type_is_byref(const Il2CppType *type) {
 }
 
 std::string dump_method(Il2CppClass *klass) {
+    list<Method> methods;
+    Method method_my;
     std::stringstream outPut;
     outPut << "\n\t// Methods\n";
     void *iter = nullptr;
@@ -122,10 +126,14 @@ std::string dump_method(Il2CppClass *klass) {
         //TODO attribute
         if (method->methodPointer) {
             outPut << "\t// RVA: 0x";
+
+            method_my.offset = toHexString((uint64_t) method->methodPointer - il2cpp_base);
+
             outPut << std::hex << (uint64_t) method->methodPointer - il2cpp_base;
             outPut << " VA: 0x";
             outPut << std::hex << (uint64_t) method->methodPointer;
         } else {
+            method_my.offset = "0x";
             outPut << "\t// RVA: 0x VA: 0x0";
         }
         /*if (method->slot != 65535) {
@@ -134,13 +142,22 @@ std::string dump_method(Il2CppClass *klass) {
         outPut << "\n\t";
         uint32_t iflags = 0;
         auto flags = il2cpp_method_get_flags(method, &iflags);
+
+        method_my.sigNature = get_method_modifier(flags);
+
         outPut << get_method_modifier(flags);
         //TODO genericContainerIndex
         auto return_type = il2cpp_method_get_return_type(method);
         if (_il2cpp_type_is_byref(return_type)) {
             outPut << "ref ";
+            method_my.sigNature += "ref ";
         }
         auto return_class = il2cpp_class_from_type(return_type);
+
+        method_my.name = il2cpp_method_get_name(method);
+        method_my.sigNature = method_my.sigNature + il2cpp_class_get_name(return_class) + " " + il2cpp_method_get_name(method)
+                               + "(";
+
         outPut << il2cpp_class_get_name(return_class) << " " << il2cpp_method_get_name(method)
                << "(";
         auto param_count = il2cpp_method_get_param_count(method);
@@ -164,6 +181,11 @@ std::string dump_method(Il2CppClass *klass) {
                 }
             }
             auto parameter_class = il2cpp_class_from_type(param);
+
+            method_my.sigNature = method_my.sigNature + il2cpp_class_get_name(parameter_class) + " "
+                                + il2cpp_method_get_param_name(method, i)
+                                + ", ";
+
             outPut << il2cpp_class_get_name(parameter_class) << " "
                    << il2cpp_method_get_param_name(method, i);
             outPut << ", ";
@@ -172,12 +194,25 @@ std::string dump_method(Il2CppClass *klass) {
             outPut.seekp(-2, outPut.cur);
         }
         outPut << ") { }\n";
+
+        method_my.sigNature +=  ")";
+
+        methods.push_back(method_my);
+
         //TODO GenericInstMethod
     }
+
+    dump.methods.assign(methods.begin(),methods.end());
+    dumps.push_back(dump);
+
     return outPut.str();
 }
 
 std::string dump_property(Il2CppClass *klass) {
+
+    list<Property> properties;
+    Property property_my;
+
     std::stringstream outPut;
     outPut << "\n\t// Properties\n";
     void *iter = nullptr;
@@ -199,6 +234,10 @@ std::string dump_property(Il2CppClass *klass) {
             prop_class = il2cpp_class_from_type(param);
         }
         if (prop_class) {
+            string pr = prop_name;
+            string pr_name = il2cpp_class_get_name(prop_class);
+            property_my.name = pr_name + " " + pr;
+
             outPut << il2cpp_class_get_name(prop_class) << " " << prop_name << " { ";
             if (get) {
                 outPut << "get; ";
@@ -209,14 +248,26 @@ std::string dump_property(Il2CppClass *klass) {
             outPut << "}\n";
         } else {
             if (prop_name) {
+                string pro;
+                pro = prop_name;
+                property_my.name = " // unknown property " + pro;
+
                 outPut << " // unknown property " << prop_name;
             }
         }
+        properties.push_back(property_my);
     }
+
+    dump.properties.assign(properties.begin(),properties.end());
+
     return outPut.str();
 }
 
 std::string dump_field(Il2CppClass *klass) {
+
+    list<Field> fields;
+    Field field_my;
+
     std::stringstream outPut;
     outPut << "\n\t// Fields\n";
     auto is_enum = il2cpp_class_is_enum(klass);
@@ -256,6 +307,11 @@ std::string dump_field(Il2CppClass *klass) {
         }
         auto field_type = il2cpp_field_get_type(field);
         auto field_class = il2cpp_class_from_type(field_type);
+        string s1, s2;
+        s1 = il2cpp_class_get_name(field_class);
+        s2 = il2cpp_field_get_name(field);
+        field_my.name = s1 + " " + s2;
+
         outPut << il2cpp_class_get_name(field_class) << " " << il2cpp_field_get_name(field);
         //TODO 获取构造函数初始化后的字段值
         if (attrs & FIELD_ATTRIBUTE_LITERAL && is_enum) {
@@ -264,7 +320,13 @@ std::string dump_field(Il2CppClass *klass) {
             outPut << " = " << std::dec << val;
         }
         outPut << "; // 0x" << std::hex << il2cpp_field_get_offset(field) << "\n";
+
+        field_my.offset = toHexString(il2cpp_field_get_offset(field));
+        fields.push_back(field_my);
     }
+
+    dump.fields.assign(fields.begin(),fields.end());
+
     return outPut.str();
 }
 
@@ -272,6 +334,9 @@ std::string dump_type(const Il2CppType *type) {
     std::stringstream outPut;
     auto *klass = il2cpp_class_from_type(type);
     outPut << "\n// Namespace: " << il2cpp_class_get_namespace(klass) << "\n";
+
+    dump.nameSpace = il2cpp_class_get_namespace(klass);
+
     auto flags = il2cpp_class_get_flags(klass);
     if (flags & TYPE_ATTRIBUTE_SERIALIZABLE) {
         outPut << "[Serializable]\n";
@@ -317,6 +382,9 @@ std::string dump_type(const Il2CppType *type) {
         outPut << "class ";
     }
     outPut << il2cpp_class_get_name(klass); //TODO genericContainerIndex
+
+    dump.clsName = il2cpp_class_get_name(klass);
+
     std::vector<std::string> extends;
     auto parent = il2cpp_class_get_parent(klass);
     if (!is_valuetype && !is_enum && parent) {
@@ -380,6 +448,9 @@ void il2cpp_dump(void *handle, char *outDir) {
         for (int i = 0; i < size; ++i) {
             auto image = il2cpp_assembly_get_image(assemblies[i]);
             std::stringstream imageStr;
+
+            dump.dllName = il2cpp_image_get_name(image);
+
             imageStr << "\n// Dll : " << il2cpp_image_get_name(image);
             auto classCount = il2cpp_image_get_class_count(image);
             for (int j = 0; j < classCount; ++j) {
@@ -445,5 +516,15 @@ void il2cpp_dump(void *handle, char *outDir) {
         outStream << outPuts[i];
     }
     outStream.close();
+
+    auto scriptPath = std::string(outDir).append("/files/dump.json");
+    std::ofstream ofs(scriptPath);
+    list<string> ret = SerializeDumps(dumps);
+    for(string str : ret){
+        if(str.find(",]")){
+            Replace(str,",]","]");
+        }
+        ofs << str;
+    }
     LOGI("dump done!");
 }

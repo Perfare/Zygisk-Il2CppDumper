@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
       inputs:
         package_name:
-          description: "Package name of the game:"
+description: com.tencent.tmgp.cf
           required: true
 
 jobs:

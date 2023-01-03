@@ -11,6 +11,7 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
+#include <xdl.h>
 #include "log.h"
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class.h"
@@ -21,11 +22,15 @@
 
 #undef DO_API
 
-static void *il2cpp_handle = nullptr;
 static uint64_t il2cpp_base = 0;
 
-void init_il2cpp_api() {
-#define DO_API(r, n, p) n = (r (*) p)dlsym(il2cpp_handle, #n)
+void init_il2cpp_api(void *handle) {
+#define DO_API(r, n, p) {                      \
+    n = (r (*) p)xdl_sym(handle, #n, nullptr); \
+    if(!n) {                                   \
+        LOGW("api not found %s", #n);          \
+    }                                          \
+}
 
 #include "il2cpp-api-functions.h"
 
@@ -347,8 +352,7 @@ std::string dump_type(const Il2CppType *type) {
 void il2cpp_dump(void *handle, char *outDir) {
     //initialize
     LOGI("il2cpp_handle: %p", handle);
-    il2cpp_handle = handle;
-    init_il2cpp_api();
+    init_il2cpp_api(handle);
     if (il2cpp_domain_get_assemblies) {
         Dl_info dlInfo;
         if (dladdr((void *) il2cpp_domain_get_assemblies, &dlInfo)) {

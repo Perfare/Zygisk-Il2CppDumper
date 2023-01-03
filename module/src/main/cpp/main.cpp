@@ -1,7 +1,7 @@
 #include <cstring>
 #include <jni.h>
 #include <pthread.h>
-#include "hook.h"
+#include "hack.h"
 #include "zygisk.hpp"
 
 

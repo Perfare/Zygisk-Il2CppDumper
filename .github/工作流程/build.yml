@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
       inputs:
         package_name:"com.mengyou.yzqj:"
-          description: "Package name of the game:"
           required: true
 
 jobs:

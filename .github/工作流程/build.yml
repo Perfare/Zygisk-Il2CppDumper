@@ -2,8 +2,8 @@ name: Build
 on:
   workflow_dispatch:
       inputs:
-        package_name:
-          description: "Package name of the game:"
+        package_name:"com.mengyou.yzqj"
+        
           required: true
 
 jobs:

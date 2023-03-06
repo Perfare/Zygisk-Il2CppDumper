@@ -11,6 +11,7 @@
 #include <vector>
 #include <sstream>
 #include <fstream>
+#include <unistd.h>
 #include "xdl.h"
 #include "log.h"
 #include "il2cpp-tabledefs.h"
@@ -333,6 +334,10 @@ void il2cpp_api_init(void *handle) {
     } else {
         LOGE("Failed to initialize il2cpp api.");
         return;
+    }
+    while (!il2cpp_is_vm_thread(nullptr)) {
+        LOGI("Waiting for il2cpp_init...");
+        sleep(1);
     }
     auto domain = il2cpp_domain_get();
     il2cpp_thread_attach(domain);

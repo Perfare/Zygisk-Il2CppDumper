@@ -1,5 +1,10 @@
 #include <cstring>
 #include <thread>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <cinttypes>
 #include "hack.h"
 #include "zygisk.hpp"
 #include "game.h"
@@ -26,7 +31,7 @@ public:
 
     void postAppSpecialize(const AppSpecializeArgs *) override {
         if (enable_hack) {
-            std::thread hack_thread(hack_prepare, game_data_dir);
+            std::thread hack_thread(hack_prepare, game_data_dir, data, length);
             hack_thread.detach();
         }
     }
@@ -36,6 +41,8 @@ private:
     JNIEnv *env;
     bool enable_hack;
     char *game_data_dir;
+    void *data;
+    size_t length;
 
     void preSpecialize(const char *package_name, const char *app_data_dir) {
         if (strcmp(package_name, GamePackageName) == 0) {
@@ -43,6 +50,23 @@ private:
             enable_hack = true;
             game_data_dir = new char[strlen(app_data_dir) + 1];
             strcpy(game_data_dir, app_data_dir);
+
+#if defined(__i386__)
+            auto path = "/data/adb/modules/zygisk_il2cppdumper/zygisk/armeabi-v7a.so";
+#endif
+#if defined(__x86_64__)
+            auto path = "/data/adb/modules/zygisk_il2cppdumper/zygisk/arm64-v8a.so";
+#endif
+#if defined(__i386__) || defined(__x86_64__)
+            auto fd = open(path, O_RDONLY);
+            struct stat sb{};
+            fstat(fd, &sb);
+            length = sb.st_size;
+            LOGI("arm file length : %zu", length);
+            data = malloc(length);
+            read(fd, data, length);
+            close(fd);
+#endif
         }
     }
 };

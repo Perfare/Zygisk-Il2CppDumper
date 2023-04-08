@@ -15,11 +15,12 @@
 #include <thread>
 #include <sys/mman.h>
 #include <linux/unistd.h>
+#include <array>
 
-static int GetAndroidApiLevel() {
-    char prop_value[PROP_VALUE_MAX];
-    __system_property_get("ro.build.version.sdk", prop_value);
-    return atoi(prop_value);
+static std::string GetNativeBridgeLibrary() {
+    auto value = std::array<char, PROP_VALUE_MAX>();
+    __system_property_get("ro.dalvik.vm.native.bridge", value.data());
+    return {value.data()};
 }
 
 void hack_start(const char *game_data_dir) {
@@ -64,27 +65,22 @@ struct NativeBridgeCallbacks {
 
 void hack_prepare(const char *game_data_dir, void *data, size_t length) {
     LOGI("hack thread: %d", gettid());
-    int api_level = GetAndroidApiLevel();
+    int api_level = android_get_device_api_level();
     LOGI("api level: %d", api_level);
 
 #if defined(__i386__) || defined(__x86_64__)
     //TODO 等待houdini初始化
     sleep(5);
 
-    auto libhoudini = dlopen("libhoudini.so", RTLD_NOW);
-    if (libhoudini) {
-        LOGI("houdini %p", libhoudini);
-
-        int fd = syscall(__NR_memfd_create, "anon", MFD_CLOEXEC);
-        ftruncate(fd, (off_t) length);
-        void *mem = mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        memcpy(mem, data, length);
-        munmap(mem, length);
-        char path[PATH_MAX];
-        snprintf(path, PATH_MAX, "/proc/self/fd/%d", fd);
-        LOGI("arm path %s", path);
-
-        auto callbacks = (NativeBridgeCallbacks *) dlsym(libhoudini, "NativeBridgeItf");
+    auto nb = dlopen("libhoudini.so", RTLD_NOW);
+    if (!nb) {
+        auto native_bridge = GetNativeBridgeLibrary();
+        LOGI("native bridge: %s", native_bridge.data());
+        nb = dlopen(native_bridge.data(), RTLD_NOW);
+    }
+    if (nb) {
+        LOGI("nb %p", nb);
+        auto callbacks = (NativeBridgeCallbacks *) dlsym(nb, "NativeBridgeItf");
         if (callbacks) {
             LOGI("NativeBridgeLoadLibrary %p", callbacks->loadLibrary);
             LOGI("NativeBridgeLoadLibraryExt %p", callbacks->loadLibraryExt);
@@ -93,6 +89,17 @@ void hack_prepare(const char *game_data_dir, void *data, size_t length) {
             auto JNI_GetCreatedJavaVMs = (jint (*)(JavaVM **, jsize, jsize *)) dlsym(libart,
                                                                                      "JNI_GetCreatedJavaVMs");
             LOGI("JNI_GetCreatedJavaVMs %p", JNI_GetCreatedJavaVMs);
+
+            int fd = syscall(__NR_memfd_create, "anon", MFD_CLOEXEC);
+            ftruncate(fd, (off_t) length);
+            void *mem = mmap(nullptr, length, PROT_WRITE, MAP_SHARED, fd, 0);
+            memcpy(mem, data, length);
+            munmap(mem, length);
+            munmap(data, length);
+            char path[PATH_MAX];
+            snprintf(path, PATH_MAX, "/proc/self/fd/%d", fd);
+            LOGI("arm path %s", path);
+
             void *arm_handle;
             if (api_level >= 26) {
                 arm_handle = callbacks->loadLibraryExt(path, RTLD_NOW, (void *) 3);
@@ -105,14 +112,15 @@ void hack_prepare(const char *game_data_dir, void *data, size_t length) {
                 jsize num_vms;
                 jint status = JNI_GetCreatedJavaVMs(vms_buf, 1, &num_vms);
                 if (status == JNI_OK && num_vms > 0) {
-                    auto init = (void (*)(JavaVM *vm, void *reserved)) callbacks->getTrampoline(
-                            arm_handle, "JNI_OnLoad", nullptr, 0);
+                    auto init = (void (*)(JavaVM *, void *)) callbacks->getTrampoline(arm_handle,
+                                                                                      "JNI_OnLoad",
+                                                                                      nullptr, 0);
                     LOGI("JNI_OnLoad %p", init);
                     init(vms_buf[0], (void *) game_data_dir);
                 }
             }
+            close(fd);
         }
-        close(fd);
     } else {
 #endif
         hack_start(game_data_dir);

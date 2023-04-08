@@ -400,7 +400,7 @@ void il2cpp_dump(const char *outDir) {
             auto imageName = std::string(image_name);
             auto pos = imageName.rfind('.');
             auto imageNameNoExt = imageName.substr(0, pos);
-            auto assemblyFileName = il2cpp_string_new(imageNameNoExt.c_str());
+            auto assemblyFileName = il2cpp_string_new(imageNameNoExt.data());
             auto reflectionAssembly = ((Assembly_Load_ftn) assemblyLoad->methodPointer)(nullptr,
                                                                                         assemblyFileName,
                                                                                         nullptr);

@@ -1,6 +1,7 @@
 #include <cstring>
 #include <thread>
 #include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -52,20 +53,23 @@ private:
             strcpy(game_data_dir, app_data_dir);
 
 #if defined(__i386__)
-            auto path = "/data/adb/modules/zygisk_il2cppdumper/zygisk/armeabi-v7a.so";
+            auto path = "zygisk/armeabi-v7a.so";
 #endif
 #if defined(__x86_64__)
-            auto path = "/data/adb/modules/zygisk_il2cppdumper/zygisk/arm64-v8a.so";
+            auto path = "zygisk/arm64-v8a.so";
 #endif
 #if defined(__i386__) || defined(__x86_64__)
-            auto fd = open(path, O_RDONLY);
-            struct stat sb{};
-            fstat(fd, &sb);
-            length = sb.st_size;
-            LOGI("arm file length : %zu", length);
-            data = malloc(length);
-            read(fd, data, length);
-            close(fd);
+            int dirfd = api->getModuleDir();
+            int fd = openat(dirfd, path, O_RDONLY);
+            if (fd != -1) {
+                struct stat sb{};
+                fstat(fd, &sb);
+                length = sb.st_size;
+                data = mmap(nullptr, length, PROT_READ, MAP_PRIVATE, fd, 0);
+                close(fd);
+            } else {
+                LOGW("Unable to open arm file");
+            }
 #endif
         }
     }

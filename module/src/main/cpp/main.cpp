@@ -71,6 +71,8 @@ private:
                 LOGW("Unable to open arm file");
             }
 #endif
+        } else {
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
         }
     }
 };

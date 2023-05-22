@@ -7,6 +7,13 @@
 
 #include <stddef.h>
 
-void hack_prepare(const char *game_data_dir, void *data, size_t length);
+struct ArmLoader {
+    void *arm;
+    size_t arm_length;
+    void *arm64;
+    size_t arm64_length;
+};
+
+void hack_prepare(const char *game_data_dir, ArmLoader *loader);
 
 #endif //ZYGISK_IL2CPPDUMPER_HACK_H

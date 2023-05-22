@@ -17,12 +17,6 @@
 #include <linux/unistd.h>
 #include <array>
 
-static std::string GetNativeBridgeLibrary() {
-    auto value = std::array<char, PROP_VALUE_MAX>();
-    __system_property_get("ro.dalvik.vm.native.bridge", value.data());
-    return {value.data()};
-}
-
 void hack_start(const char *game_data_dir) {
     bool load = false;
     for (int i = 0; i < 10; i++) {
@@ -39,6 +33,60 @@ void hack_start(const char *game_data_dir) {
     if (!load) {
         LOGI("libil2cpp.so not found in thread %d", gettid());
     }
+}
+
+std::string GetLibDir(JavaVM *vms) {
+    JNIEnv *env = nullptr;
+    vms->AttachCurrentThread(&env, nullptr);
+    jclass activity_thread_clz = env->FindClass("android/app/ActivityThread");
+    if (activity_thread_clz != nullptr) {
+        jmethodID currentApplicationId = env->GetStaticMethodID(activity_thread_clz,
+                                                                "currentApplication",
+                                                                "()Landroid/app/Application;");
+        if (currentApplicationId) {
+            jobject application = env->CallStaticObjectMethod(activity_thread_clz,
+                                                              currentApplicationId);
+            jclass application_clazz = env->GetObjectClass(application);
+            if (application_clazz) {
+                jmethodID get_application_info = env->GetMethodID(application_clazz,
+                                                                  "getApplicationInfo",
+                                                                  "()Landroid/content/pm/ApplicationInfo;");
+                if (get_application_info) {
+                    jobject application_info = env->CallObjectMethod(application,
+                                                                     get_application_info);
+                    jfieldID native_library_dir_id = env->GetFieldID(
+                            env->GetObjectClass(application_info), "nativeLibraryDir",
+                            "Ljava/lang/String;");
+                    if (native_library_dir_id) {
+                        auto native_library_dir_jstring = (jstring) env->GetObjectField(
+                                application_info, native_library_dir_id);
+                        auto path = env->GetStringUTFChars(native_library_dir_jstring, nullptr);
+                        LOGI("lib dir %s", path);
+                        std::string lib_dir(path);
+                        env->ReleaseStringUTFChars(native_library_dir_jstring, path);
+                        return lib_dir;
+                    } else {
+                        LOGE("nativeLibraryDir not found");
+                    }
+                } else {
+                    LOGE("getApplicationInfo not found");
+                }
+            } else {
+                LOGE("application class not found");
+            }
+        } else {
+            LOGE("currentApplication not found");
+        }
+    } else {
+        LOGE("ActivityThread not found");
+    }
+    return {};
+}
+
+static std::string GetNativeBridgeLibrary() {
+    auto value = std::array<char, PROP_VALUE_MAX>();
+    __system_property_get("ro.dalvik.vm.native.bridge", value.data());
+    return {value.data()};
 }
 
 struct NativeBridgeCallbacks {
@@ -63,14 +111,45 @@ struct NativeBridgeCallbacks {
     void *(*loadLibraryExt)(const char *libpath, int flag, void *ns);
 };
 
-void hack_prepare(const char *game_data_dir, void *data, size_t length) {
-    LOGI("hack thread: %d", gettid());
-    int api_level = android_get_device_api_level();
-    LOGI("api level: %d", api_level);
-
-#if defined(__i386__) || defined(__x86_64__)
+bool NativeBridgeLoad(const char *game_data_dir, int api_level, ArmLoader *loader) {
     //TODO 等待houdini初始化
     sleep(5);
+
+    auto libart = dlopen("libart.so", RTLD_NOW);
+    auto JNI_GetCreatedJavaVMs = (jint (*)(JavaVM **, jsize, jsize *)) dlsym(libart,
+                                                                             "JNI_GetCreatedJavaVMs");
+    LOGI("JNI_GetCreatedJavaVMs %p", JNI_GetCreatedJavaVMs);
+    JavaVM *vms_buf[1];
+    JavaVM *vms;
+    jsize num_vms;
+    jint status = JNI_GetCreatedJavaVMs(vms_buf, 1, &num_vms);
+    if (status == JNI_OK && num_vms > 0) {
+        vms = vms_buf[0];
+    } else {
+        LOGE("GetCreatedJavaVMs error");
+        return false;
+    }
+
+    void *data;
+    size_t length;
+    auto lib_dir = GetLibDir(vms);
+    if (lib_dir.empty()) {
+        LOGE("GetLibDir error");
+        return false;
+    }
+    if (lib_dir.find("arm64") != std::string::npos) {
+        LOGI("load arm64");
+        data = loader->arm64;
+        length = loader->arm64_length;
+    } else if (lib_dir.find("arm") != std::string::npos) {
+        LOGI("load arm");
+        data = loader->arm;
+        length = loader->arm_length;
+    } else {
+        //TODO 可能有x86_64载入x86游戏的情况？
+        LOGI("no need NativeBridge");
+        return false;
+    }
 
     auto nb = dlopen("libhoudini.so", RTLD_NOW);
     if (!nb) {
@@ -85,17 +164,12 @@ void hack_prepare(const char *game_data_dir, void *data, size_t length) {
             LOGI("NativeBridgeLoadLibrary %p", callbacks->loadLibrary);
             LOGI("NativeBridgeLoadLibraryExt %p", callbacks->loadLibraryExt);
             LOGI("NativeBridgeGetTrampoline %p", callbacks->getTrampoline);
-            auto libart = dlopen("libart.so", RTLD_NOW);
-            auto JNI_GetCreatedJavaVMs = (jint (*)(JavaVM **, jsize, jsize *)) dlsym(libart,
-                                                                                     "JNI_GetCreatedJavaVMs");
-            LOGI("JNI_GetCreatedJavaVMs %p", JNI_GetCreatedJavaVMs);
 
             int fd = syscall(__NR_memfd_create, "anon", MFD_CLOEXEC);
             ftruncate(fd, (off_t) length);
             void *mem = mmap(nullptr, length, PROT_WRITE, MAP_SHARED, fd, 0);
             memcpy(mem, data, length);
             munmap(mem, length);
-            munmap(data, length);
             char path[PATH_MAX];
             snprintf(path, PATH_MAX, "/proc/self/fd/%d", fd);
             LOGI("arm path %s", path);
@@ -108,24 +182,32 @@ void hack_prepare(const char *game_data_dir, void *data, size_t length) {
             }
             if (arm_handle) {
                 LOGI("arm handle %p", arm_handle);
-                JavaVM *vms_buf[1];
-                jsize num_vms;
-                jint status = JNI_GetCreatedJavaVMs(vms_buf, 1, &num_vms);
-                if (status == JNI_OK && num_vms > 0) {
-                    auto init = (void (*)(JavaVM *, void *)) callbacks->getTrampoline(arm_handle,
-                                                                                      "JNI_OnLoad",
-                                                                                      nullptr, 0);
-                    LOGI("JNI_OnLoad %p", init);
-                    init(vms_buf[0], (void *) game_data_dir);
-                }
+                auto init = (void (*)(JavaVM *, void *)) callbacks->getTrampoline(arm_handle,
+                                                                                  "JNI_OnLoad",
+                                                                                  nullptr, 0);
+                LOGI("JNI_OnLoad %p", init);
+                init(vms, (void *) game_data_dir);
+                return true;
             }
             close(fd);
         }
-    } else {
+    }
+    return false;
+}
+
+void hack_prepare(const char *game_data_dir, ArmLoader *loader) {
+    LOGI("hack thread: %d", gettid());
+    int api_level = android_get_device_api_level();
+    LOGI("api level: %d", api_level);
+
+#if defined(__i386__) || defined(__x86_64__)
+    if (!NativeBridgeLoad(game_data_dir, api_level, loader)) {
 #endif
         hack_start(game_data_dir);
 #if defined(__i386__) || defined(__x86_64__)
     }
+    munmap(loader->arm, loader->arm_length);
+    munmap(loader->arm64, loader->arm64_length);
 #endif
 }
 

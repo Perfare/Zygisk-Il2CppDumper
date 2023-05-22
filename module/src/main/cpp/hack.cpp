@@ -111,7 +111,7 @@ struct NativeBridgeCallbacks {
     void *(*loadLibraryExt)(const char *libpath, int flag, void *ns);
 };
 
-bool NativeBridgeLoad(const char *game_data_dir, int api_level, ArmLoader *loader) {
+bool NativeBridgeLoad(const char *game_data_dir, int api_level, void *data, size_t length) {
     //TODO 等待houdini初始化
     sleep(5);
 
@@ -130,24 +130,14 @@ bool NativeBridgeLoad(const char *game_data_dir, int api_level, ArmLoader *loade
         return false;
     }
 
-    void *data;
-    size_t length;
     auto lib_dir = GetLibDir(vms);
     if (lib_dir.empty()) {
         LOGE("GetLibDir error");
         return false;
     }
-    if (lib_dir.find("arm64") != std::string::npos) {
-        LOGI("load arm64");
-        data = loader->arm64;
-        length = loader->arm64_length;
-    } else if (lib_dir.find("arm") != std::string::npos) {
-        LOGI("load arm");
-        data = loader->arm;
-        length = loader->arm_length;
-    } else {
-        //TODO 可能有x86_64载入x86游戏的情况？
+    if (lib_dir.find("/lib/x86") != std::string::npos) {
         LOGI("no need NativeBridge");
+        munmap(data, length);
         return false;
     }
 
@@ -170,6 +160,7 @@ bool NativeBridgeLoad(const char *game_data_dir, int api_level, ArmLoader *loade
             void *mem = mmap(nullptr, length, PROT_WRITE, MAP_SHARED, fd, 0);
             memcpy(mem, data, length);
             munmap(mem, length);
+            munmap(data, length);
             char path[PATH_MAX];
             snprintf(path, PATH_MAX, "/proc/self/fd/%d", fd);
             LOGI("arm path %s", path);
@@ -195,19 +186,17 @@ bool NativeBridgeLoad(const char *game_data_dir, int api_level, ArmLoader *loade
     return false;
 }
 
-void hack_prepare(const char *game_data_dir, ArmLoader *loader) {
+void hack_prepare(const char *game_data_dir, void *data, size_t length) {
     LOGI("hack thread: %d", gettid());
     int api_level = android_get_device_api_level();
     LOGI("api level: %d", api_level);
 
 #if defined(__i386__) || defined(__x86_64__)
-    if (!NativeBridgeLoad(game_data_dir, api_level, loader)) {
+    if (!NativeBridgeLoad(game_data_dir, api_level, data, length)) {
 #endif
         hack_start(game_data_dir);
 #if defined(__i386__) || defined(__x86_64__)
     }
-    munmap(loader->arm, loader->arm_length);
-    munmap(loader->arm64, loader->arm64_length);
 #endif
 }
 

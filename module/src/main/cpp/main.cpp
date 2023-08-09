@@ -46,7 +46,22 @@ private:
     size_t length;
 
     void preSpecialize(const char *package_name, const char *app_data_dir) {
-        if (strcmp(package_name, GamePackageName) == 0) {
+        const char* target = GamePackageName;
+        char buf[256];
+        int count;
+        unsigned custom_package = 0;
+        int fd = api->connectCompanion();
+        read(fd, &custom_package, sizeof(custom_package));
+        if (custom_package){
+            bzero(buf, 256);
+            count = read(fd, buf, 256);
+            if (count > 0){
+                target = buf;
+//                LOGD("process=[%s], custom_package=[%u], target[%s]\n", package_name, custom_package, target);
+            }
+        }
+        close(fd);
+        if (strcmp(package_name, target) == 0) {
             LOGI("detect game: %s", package_name);
             enable_hack = true;
             game_data_dir = new char[strlen(app_data_dir) + 1];
@@ -77,4 +92,29 @@ private:
     }
 };
 
+static void companion_handler(int i) {
+    const char filepath[] = "/data/adb/il2cpp_dumper_target.txt";
+    unsigned custom_package = 0;
+    char buf[256];
+    bzero(buf, 256);
+    if (access(filepath, F_OK) == 0){
+        FILE* fp = fopen(filepath, "r");
+        if (fp){
+            if (fgets(buf, 256, fp) != nullptr){
+                char *tmp;
+                if ((tmp = strstr(buf, "\n"))){
+                    *tmp = '\0';
+                }
+                custom_package = 1;
+                write(i, &custom_package, sizeof(custom_package));
+                write(i, buf, strlen(buf));
+                return;
+            }
+        }
+    }
+    write(i, &custom_package, sizeof(custom_package));
+//    LOGD("companion custom_package=[%u]\n", custom_package);
+}
+
 REGISTER_ZYGISK_MODULE(MyModule)
+REGISTER_ZYGISK_COMPANION(companion_handler)

@@ -4,6 +4,7 @@
 #include "zygisk.hpp"
 #include "game.h"
 #include "log.h"
+#include <filesystem>
 
 using zygisk::Api;
 using zygisk::AppSpecializeArgs;
@@ -43,6 +44,9 @@ private:
             enable_hack = true;
             game_data_dir = new char[strlen(app_data_dir) + 1];
             strcpy(game_data_dir, app_data_dir);
+            if(enable_hack){
+            enable_hack=!std::filesystem::exists(std::string(app_data_dir).append("/files/dump.cs"));
+            }
         }
     }
 };

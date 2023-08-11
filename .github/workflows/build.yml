@@ -5,7 +5,12 @@ on:
         package_name:
           description: "Package name of the game:"
           required: true
-
+        module_id:
+          description: "module_id(uuid)"
+          required: true
+        moduleLibraryName:
+          description: "module_name"
+          required: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,7 +23,10 @@ jobs:
         cache: gradle
     - run: |
         chmod +x ./gradlew
+        sed -i 's/magiskModuleId = "/magiskModuleId = "(${{ github.event.inputs.module_id }}) /g' module.gradle
+        sed -i 's/moduleLibraryName = "/moduleLibraryName = "(${{ github.event.inputs.moduleLibraryName }}) /g' module.gradle
         sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
+        
         sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
         ./gradlew :module:assembleRelease
     - uses: actions/upload-artifact@v3

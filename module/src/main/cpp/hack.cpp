@@ -11,7 +11,6 @@
 #include "il2cpp_dump.h"
 #include "log.h"
 #include "xdl.h"
-#include <filesystem>
 
 static int GetAndroidApiLevel() {
     char prop_value[PROP_VALUE_MAX];
@@ -38,10 +37,8 @@ void hack_start(const char *game_data_dir) {
 }
 
 void hack_prepare(const char *game_data_dir) {
-    if(!std::filesystem::exists(std::string(game_data_dir).append("/files/dump.cs"))){
     LOGI("hack thread: %d", gettid());
     int api_level = GetAndroidApiLevel();
     LOGI("api level: %d", api_level);
     hack_start(game_data_dir);
-    }
 }

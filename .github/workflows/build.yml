@@ -7,10 +7,12 @@ on:
           required: true
         magiskModuleId:
           description: "module_id(uuid)"
-          required: true
+          required: false
+          default: 'zygisk_il2cppdumper'
         moduleName:
           description: "module_name"
           required: false
+          default: 'Il2CppDumper'
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,8 +25,8 @@ jobs:
         cache: gradle
     - run: |
         chmod +x ./gradlew
-        sed -i 's/magiskModuleId = "/magiskModuleId = "(${{ github.event.inputs.magiskModuleId }}) /g' module.gradle
-        sed -i 's/moduleName = "/moduleName = "(${{ github.event.inputs.moduleName }}) /g' module.gradle
+        sed -i 's/magiskModuleId = "/magiskModuleId = "${{ github.event.inputs.magiskModuleId }} /g' module.gradle
+        sed -i 's/moduleName = "/moduleName = "${{ github.event.inputs.moduleName }} /g' module.gradle
         sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
         
         sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h

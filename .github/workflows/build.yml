@@ -5,10 +5,10 @@ on:
         package_name:
           description: "Package name of the game:"
           required: true
-        module_id:
+        magiskModuleId:
           description: "module_id(uuid)"
           required: true
-        moduleLibraryName:
+        moduleName:
           description: "module_name"
           required: false
 jobs:
@@ -23,8 +23,8 @@ jobs:
         cache: gradle
     - run: |
         chmod +x ./gradlew
-        sed -i 's/magiskModuleId = "/magiskModuleId = "(${{ github.event.inputs.module_id }}) /g' module.gradle
-        sed -i 's/moduleLibraryName = "/moduleLibraryName = "(${{ github.event.inputs.moduleLibraryName }}) /g' module.gradle
+        sed -i 's/magiskModuleId = "/magiskModuleId = "(${{ github.event.inputs.magiskModuleId }}) /g' module.gradle
+        sed -i 's/moduleName = "/moduleName = "(${{ github.event.inputs.moduleName }}) /g' module.gradle
         sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
         
         sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h

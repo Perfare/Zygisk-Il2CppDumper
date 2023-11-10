@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
       inputs:
         package_name:
-          description: "Package name of the game:"
+          description: "com.pinkcore.heros"
           required: true
 
 jobs:
@@ -18,8 +18,8 @@ jobs:
         cache: gradle
     - run: |
         chmod +x ./gradlew
-        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
-        sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
+        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.com.pinkcore.heros }}) /g' module.gradle
+        sed -i "s/com.pinkcore.herose/${{ github.event.inputs.com.pinkcore.heros }}/g" module/src/main/cpp/game.h
         ./gradlew :module:assembleRelease
     - uses: actions/upload-artifact@v3
       with:

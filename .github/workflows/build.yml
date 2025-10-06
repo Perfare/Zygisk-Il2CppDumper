@@ -1,27 +1,44 @@
-name: Build
+name: Build Zygisk-Il2CppDumper
+
 on:
   workflow_dispatch:
-      inputs:
-        package_name:
-          description: "Package name of the game:"
-          required: true
+    inputs:
+      package_name:
+        description: "Package name of the game (e.g. com.fun.lastwar.vn.gp):"
+        required: true
+        type: string
 
 jobs:
   build:
+    name: Build Module
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-java@v3
-      with:
-        distribution: temurin
-        java-version: 11
-        cache: gradle
-    - run: |
-        chmod +x ./gradlew
-        sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle
-        sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
-        ./gradlew :module:assembleRelease
-    - uses: actions/upload-artifact@v3
-      with:
-        name: zygisk-il2cppdumper
-        path: out/magisk_module_release/
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 11 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: gradle
+
+      - name: Prepare Gradle build
+        run: |
+          chmod +x ./gradlew
+          echo "Using package name: ${{ github.event.inputs.package_name }}"
+          # Ghi package name vào file game.h
+          sed -i "s/com.game.packagename/${{ github.event.inputs.package_name }}/g" module/src/main/cpp/game.h
+          # Cập nhật mô tả module
+          sed -i 's/moduleDescription = "/moduleDescription = "('${{ github.event.inputs.package_name}}') /g' module.gradle
+
+      - name: Build release module
+        run: ./gradlew :module:assembleRelease --stacktrace
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zygisk-il2cppdumper-${{ github.event.inputs.package_name }}
+          path: out/magisk_module_release/
+          if-no-files-found: error

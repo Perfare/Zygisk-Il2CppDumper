@@ -1,7 +1,3 @@
-//
-// Created by Perfare on 2020/7/4.
-//
-
 #include "il2cpp_dump.h"
 #include <dlfcn.h>
 #include <cstdlib>
@@ -17,10 +13,12 @@
 #include "il2cpp-tabledefs.h"
 #include "il2cpp-class.h"
 
+// KHÔNG ĐỂ GÌ PHÍA TRÊN DÒNG NÀY
+// Khai báo prototype để compiler biết dump_type tồn tại
+std::string dump_type(const Il2CppType *type);
+
 #define DO_API(r, n, p) r (*n) p
-
 #include "il2cpp-api-functions.h"
-
 #undef DO_API
 
 static uint64_t il2cpp_base = 0;
@@ -335,15 +333,33 @@ void il2cpp_api_init(void *handle) {
         LOGE("Failed to initialize il2cpp api.");
         return;
     }
+
+    // Added initial sleep to reduce early attach crashes
+    LOGI("Sleeping 10s before checking il2cpp init...");
+    sleep(10);
+
+    int retry = 0;
     while (!il2cpp_is_vm_thread(nullptr)) {
-        LOGI("Waiting for il2cpp_init...");
+        retry++;
+        LOGI("Waiting for il2cpp_init... try %d", retry);
         sleep(1);
+        if (retry > 30) {
+            LOGE("Timeout waiting for il2cpp_init after %d seconds.", retry + 10);
+            return;
+        }
     }
+
     auto domain = il2cpp_domain_get();
+    if (!domain) {
+        LOGE("il2cpp_domain_get() failed after init wait.");
+        return;
+    }
+
     il2cpp_thread_attach(domain);
+    LOGI("il2cpp thread attached successfully after %d seconds total.", retry + 10);
 }
 
-void il2cpp_dump(const char *outDir) {
+void il2cpp_dump(const char *ignored) {
     LOGI("dumping...");
     size_t size;
     auto domain = il2cpp_domain_get();
@@ -417,8 +433,12 @@ void il2cpp_dump(const char *outDir) {
         }
     }
     LOGI("write dump file");
-    auto outPath = std::string(outDir).append("/files/dump.cs");
+    const char *outPath = "/sdcard/Download/dump.cs";
     std::ofstream outStream(outPath);
+    if (!outStream.is_open()) {
+        LOGE("Failed to open output file: %s", outPath);
+        return;
+    }
     outStream << imageOutput.str();
     auto count = outPuts.size();
     for (int i = 0; i < count; ++i) {

@@ -23,7 +23,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         id: upload-artifact
         with:
-          name: zygisk-il2cppdumper
+          name: zygisk-il2cppdumper-${{ github.run_number }}
           path: out/magisk_module_release/
       - name: Update updateCI.json
         run: |

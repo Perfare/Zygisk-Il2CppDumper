@@ -1,0 +1,45 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: gradle
+      - name: Update module.gradle
+        run: |
+          sed -i "/moduleVersion/s/\"\([^\"]*\)\"/\"${{ github.ref_name }}\"/" module.gradle
+          sed -i "s/updateCI.json/update.json/" module.gradle
+      - run: |
+          chmod +x ./gradlew
+          ./gradlew :module:assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zygisk-il2cppdumper-release
+          path: out/zygisk-il2cppdumper-${{ github.ref_name }}-release.zip
+      - name: Release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/zygisk-il2cppdumper-${{ github.ref_name }}-release.zip
+      - name: Update update.json
+        run: |
+          version=${{ github.ref_name }}
+          sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$version\"/" update.json
+          versionCode=$(sed -n '/versionCode/p' updateCI.json)
+          sed -i "/versionCode/s/.*/$versionCode/" update.json
+          zipUrl=${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
+          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
+      - uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: Update module.gradle and update.json automatically

@@ -15,7 +15,7 @@ jobs:
         id: short-sha
         with:
           length: 6
-      - run:
+      - run: |
           chmod +x ./gradlew
           sed -i 's/\(moduleVersion = "v[^"]*\)/\1 (${{ steps.short-sha.outputs.sha }})/' module.gradle
           ./gradlew :module:assembleRelease

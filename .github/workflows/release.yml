@@ -11,6 +11,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v3
+      - run: git checkout HEAD^
       - uses: actions/setup-java@v3
         with:
           distribution: temurin
@@ -36,10 +37,13 @@ jobs:
         run: |
           version=${{ github.ref_name }}
           sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$version\"/" update.json
+          sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$version\"/" updateCI.json
           versionCode=$(sed -n '/versionCode/p' updateCI.json)
           sed -i "/versionCode/s/.*/$versionCode/" update.json
+          sed -i "/versionCode/s/.*/$versionCode/" updateCI.json
           zipUrl=${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
+          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
       - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Update module.gradle and update.json automatically

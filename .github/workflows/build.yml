@@ -4,6 +4,8 @@ on: [ push ]
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-java@v3
@@ -11,15 +13,26 @@ jobs:
           distribution: temurin
           java-version: 11
           cache: gradle
-      - uses: benjlevesque/short-sha@v3.0
-        id: short-sha
-        with:
-          length: 8
+      - name: Update module.gradle
+        run: |
+          sed -i "s/\(moduleVersionCode = \)[0-9]*/\1${{ github.run_number }}/" module.gradle
+          sed -i "s/update.json/updateCI.json/" module.gradle
       - run: |
           chmod +x ./gradlew
-          sed -i 's/\(moduleVersion = "v[^"]*\)/\1 (${{ steps.short-sha.outputs.sha }})/' module.gradle
           ./gradlew :module:assembleRelease
       - uses: actions/upload-artifact@v4
+        id: upload-artifact
         with:
           name: zygisk-il2cppdumper
           path: out/magisk_module_release/
+      - name: Update updateCI.json
+        run: |
+          version=$(sed -n '/moduleVersion/s/.*"\([^"]*\)".*/\1/p' module.gradle)
+          sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$version\"/" updateCI.json
+          versionCode=${{ github.run_number }}
+          sed -i "s/\(\"versionCode\": \)[0-9]*/\1$versionCode/" updateCI.json
+          zipUrl=${{ steps.upload-artifact.outputs.artifact-url }}
+          sed -i "s/\(\"zipUrl\": \)\"[^\"]*\"/\1\"zipUrl\"/" updateCI.json
+      - uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: Update module.gradle and updateCI.json automatically

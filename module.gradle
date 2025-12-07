@@ -5,6 +5,6 @@ ext {
     moduleAuthor = "Perfare, NKU100"
     moduleDescription = "Il2CppDumper Zygisk version."
     moduleVersion = "v1.2.0"
-    moduleVersionCode = 16
+    moduleVersionCode = 17
     moduleUpdateJson = "https://raw.githubusercontent.com/NKU100/Zygisk-Il2CppDumper/master/updateCI.json"
 }

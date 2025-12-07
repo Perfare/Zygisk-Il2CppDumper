@@ -40,6 +40,10 @@ jobs:
           zipUrl=${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
+          git stash
+          git checkout master
+          git pull origin master
+          git stash pop
       - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Update module.gradle and update.json automatically

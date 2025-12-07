@@ -42,6 +42,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: out/zygisk-il2cppdumper-${{ steps.short-sha.outputs.sha }}-release.zip
+          tag_name: ci_release
       - name: Update updateCI.json
         run: |
           version=${{ steps.short-sha.outputs.sha }}

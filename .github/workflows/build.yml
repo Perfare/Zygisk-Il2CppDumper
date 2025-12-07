@@ -1,8 +1,7 @@
 name: Build
 on:
   push:
-    tags-ignore:
-      - 'v*.*.*'
+    tags-ignore: [ '**' ]
 
 jobs:
   build:

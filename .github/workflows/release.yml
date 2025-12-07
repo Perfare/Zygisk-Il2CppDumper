@@ -15,11 +15,9 @@ jobs:
           distribution: temurin
           java-version: 11
           cache: gradle
-      - name: Update module.gradle
+      - name: Build
         run: |
           sed -i "/moduleVersion/s/\"\([^\"]*\)\"/\"${{ github.ref_name }}\"/" module.gradle
-          sed -i "s/updateCI.json/update.json/" module.gradle
-      - run: |
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
       - uses: actions/upload-artifact@v4

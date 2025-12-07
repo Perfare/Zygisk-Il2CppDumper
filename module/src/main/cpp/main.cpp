@@ -46,7 +46,8 @@ private:
     size_t length;
 
     void preSpecialize(const char *package_name, const char *app_data_dir) {
-        if (strcmp(package_name, GamePackageName) == 0) {
+        int dirfd = api->getModuleDir();
+        if (isTargetGame(package_name, dirfd)) {
             LOGI("detect game: %s", package_name);
             enable_hack = true;
             game_data_dir = new char[strlen(app_data_dir) + 1];
@@ -59,7 +60,6 @@ private:
             auto path = "zygisk/arm64-v8a.so";
 #endif
 #if defined(__i386__) || defined(__x86_64__)
-            int dirfd = api->getModuleDir();
             int fd = openat(dirfd, path, O_RDONLY);
             if (fd != -1) {
                 struct stat sb{};

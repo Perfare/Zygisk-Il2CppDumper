@@ -2,8 +2,9 @@ ext {
     moduleLibraryName = "il2cppdumper"
     magiskModuleId = "zygisk_il2cppdumper"
     moduleName = "Il2CppDumper"
-    moduleAuthor = "Perfare"
+    moduleAuthor = "Perfare, NKU100"
     moduleDescription = "Il2CppDumper Zygisk version."
     moduleVersion = "v1.2.0"
     moduleVersionCode = 1
+    updateJson = "https://raw.githubusercontent.com/NKU100/Zygisk-Il2CppDumper/master/update.json"
 }

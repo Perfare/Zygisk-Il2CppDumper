@@ -59,6 +59,7 @@ afterEvaluate {
                         versionCode: moduleVersionCode.toString(),
                         author     : moduleAuthor,
                         description: moduleDescription,
+                        updateJson : moduleUpdateJson,
                 ])
                 filter(FixCrLfFilter.class,
                         eol: FixCrLfFilter.CrLf.newInstance("lf"))

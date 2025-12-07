@@ -44,7 +44,6 @@ jobs:
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
           git stash
-          git branch -a
           git checkout master
           git pull origin master
           git stash pop

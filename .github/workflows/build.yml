@@ -32,7 +32,7 @@ jobs:
           versionCode=${{ github.run_number }}
           sed -i "s/\(\"versionCode\": \)[0-9]*/\1$versionCode/" updateCI.json
           zipUrl=${{ steps.upload-artifact.outputs.artifact-url }}
-          sed -i "s/\(\"zipUrl\": \)\"[^\"]*\"/\1\"$zipUrl\"/" updateCI.json
+          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
       - uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Update module.gradle and updateCI.json automatically

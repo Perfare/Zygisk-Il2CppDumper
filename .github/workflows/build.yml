@@ -43,6 +43,7 @@ jobs:
         with:
           files: out/zygisk-il2cppdumper-${{ steps.short-sha.outputs.sha }}-release.zip
           tag_name: ci_release
+          generate_release_notes: true
       - name: Update updateCI.json
         run: |
           version=${{ steps.short-sha.outputs.sha }}

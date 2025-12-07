@@ -34,6 +34,9 @@ jobs:
         with:
           name: zygisk-il2cppdumper-${{ steps.short-sha.outputs.sha }}
           path: out/magisk_module_release/
+      - run: |
+          git tag -f ci_release
+          git push -f origin ci_release
       - name: CI release
         id: release
         uses: softprops/action-gh-release@v2

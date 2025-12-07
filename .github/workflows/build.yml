@@ -11,9 +11,13 @@ jobs:
           distribution: temurin
           java-version: 11
           cache: gradle
-      - run: |
+      - uses: benjlevesque/short-sha@v3.0
+        id: short-sha
+        with:
+          length: 6
+      - run:
           chmod +x ./gradlew
-          sed 's/\(moduleVersion = "v[^"]*\)/\1 (${{ github.sha }})/' module.gradle
+          sed -i 's/\(moduleVersion = "v[^"]*\)/\1 (${{ steps.short-sha.outputs.sha }})/' module.gradle
           ./gradlew :module:assembleRelease
       - uses: actions/upload-artifact@v4
         with:

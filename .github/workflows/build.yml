@@ -56,7 +56,7 @@ jobs:
 
       - name: Update ci_release tag
         run: |
-          git tag -f 
+          git tag -f ci_release
           git push -f origin ci_release
 
       - name: CI release

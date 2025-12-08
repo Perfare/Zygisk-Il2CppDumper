@@ -1,57 +1,70 @@
 name: Build
-on:
-  push:
-    branches: [ '**' ]
-    tags-ignore: [ '**' ]
+on: [ push ]
 
 jobs:
-  build:
+  ci-build:
+    name: CI Build
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-java@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
         with:
           distribution: temurin
           java-version: 11
           cache: gradle
-      - uses: benjlevesque/short-sha@v3.0
+
+      - name: Generate short-sha
+        uses: benjlevesque/short-sha@v3.0
         id: short-sha
-      - name: Build
+
+      - name: Setup module.gradle
         run: |
-          version=$(sed -n '/moduleVersion/s/.*"\([^"]*\)".*/\1/p' module.gradle)
-          sed -i "/moduleVersion/s/\"\([^\"]*\)\"/\"${{ steps.short-sha.outputs.sha }}\"/" module.gradle
-          versionCode=${{ github.run_number }}
-          sed -i "s/\(moduleVersionCode = \)[0-9]*/\1${{ github.run_number }}/" module.gradle
-          sed -i "s/update.json/updateCI.json/" module.gradle
+          moduleVersion=${{ steps.short-sha.outputs.sha }}
+          moduleVersionCode=${{ github.run_number }}
+          moduleUpdateJson="https://github.com/NKU100/Zygisk-Il2CppDumper/releases/download/ci_release/update.json"
+          sed -i "s/\(moduleVersion = \).*/\1\"$moduleVersion\"/" module.gradle
+          sed -i "s/\(moduleVersionCode = \)[0-9]*/\1$moduleVersionCode/" module.gradle
+          sed -i "s@\(moduleUpdateJson = \).*@\1\"$moduleUpdateJson\"@" module.gradle
+
+      - name: Build with Gradle
+        run: |
           chmod +x ./gradlew
           ./gradlew :module:assembleRelease
-          sed -i "/moduleVersion/s/\"\([^\"]*\)\"/\"$version\"/" module.gradle
-          sed -i "s/updateCI.json/update.json/" module.gradle
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         id: upload-artifact
         with:
           name: zygisk-il2cppdumper-${{ steps.short-sha.outputs.sha }}
           path: out/magisk_module_release/
-      - run: |
-          git tag -f ci_release
+
+      - name: Update update.json
+        run: |
+          moduleVersion=${{ steps.short-sha.outputs.sha }}
+          moduleVersionCode=${{ github.run_number }}
+          zipUrl="https://github.com/NKU100/Zygisk-Il2CppDumper/releases/download/ci_release/zygisk-il2cppdumper-$moduleVersion-release.zip"
+          sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$moduleVersion\"/" update.json
+          sed -i "s/\(\"versionCode\": \)[0-9]*/\1$moduleVersionCode/" update.json
+          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
+
+      - name: Update ci_release tag
+        run: |
+          git tag -f 
           git push -f origin ci_release
+
       - name: CI release
         id: release
         uses: softprops/action-gh-release@v2
         with:
-          files: out/zygisk-il2cppdumper-${{ steps.short-sha.outputs.sha }}-release.zip
+          files: |
+            out/zygisk-il2cppdumper-${{ steps.short-sha.outputs.sha }}-release.zip
+            update.json
           tag_name: ci_release
           generate_release_notes: true
-      - name: Update updateCI.json
-        run: |
-          version=${{ steps.short-sha.outputs.sha }}
-          sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$version\"/" updateCI.json
-          versionCode=${{ github.run_number }}
-          sed -i "s/\(\"versionCode\": \)[0-9]*/\1$versionCode/" updateCI.json
-          zipUrl=${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
-          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
-      - uses: stefanzweifel/git-auto-commit-action@v7
-        with:
-          commit_message: Update module.gradle and updateCI.json automatically

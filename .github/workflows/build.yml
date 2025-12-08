@@ -123,7 +123,7 @@ jobs:
         run: |
           moduleVersion=${{ github.ref_name }}
           moduleVersionCode=${{ github.run_number }}
-          zipUrl=${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
+          zipUrl="https://github.com/NKU100/Zygisk-Il2CppDumper/releases/download/$moduleVersion/zygisk-il2cppdumper-$moduleVersion-release.zip"
           sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$moduleVersion\"/" update.json
           sed -i "s/\(\"versionCode\": \)[0-9]*/\1$moduleVersionCode/" update.json
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json

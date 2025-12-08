@@ -1,6 +1,6 @@
 {
   "version": "v1.2.2",
-  "versionCode": 30,
-  "zipUrl": "https://github.com/NKU100/Zygisk-Il2CppDumper/releases/download/untagged-c3491d4bda19c37fe9d2/zygisk-il2cppdumper-v1.2.2-release.zip",
+  "versionCode": 33,
+  "zipUrl": "https://github.com/NKU100/Zygisk-Il2CppDumper/releases/download/v1.2.2/zygisk-il2cppdumper-v1.2.2-release.zip",
   "changelog": ""
 }

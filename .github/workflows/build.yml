@@ -68,3 +68,67 @@ jobs:
             update.json
           tag_name: ci_release
           generate_release_notes: true
+
+  release:
+    name: Release
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: gradle
+
+      - name: Setup module.gradle
+        run: |
+          moduleVersion=${{ github.ref_name }}
+          moduleVersionCode=${{ github.run_number }}
+          sed -i "s/\(moduleVersion = \).*/\1\"$moduleVersion\"/" module.gradle
+          sed -i "s/\(moduleVersionCode = \)[0-9]*/\1$moduleVersionCode/" module.gradle
+
+      - name: Build with Gradle
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :module:assembleRelease
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zygisk-il2cppdumper-release
+          path: out/zygisk-il2cppdumper-${{ github.ref_name }}-release.zip
+
+      - name: Release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/zygisk-il2cppdumper-${{ github.ref_name }}-release.zip
+          generate_release_notes: true
+
+      - name: Update update.json
+        run: |
+          moduleVersion=${{ github.ref_name }}
+          moduleVersionCode=${{ github.run_number }}
+          zipUrl=${{ fromJSON(steps.release.outputs.assets)[0].browser_download_url }}
+          sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$moduleVersion\"/" update.json
+          sed -i "s/\(\"versionCode\": \)[0-9]*/\1$moduleVersionCode/" update.json
+          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
+
+      - name: Checkout master
+        run: |
+          git stash
+          git checkout master
+          git pull origin master
+          git stash pop
+
+      - name: Auto commit
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: Update module.gradle and update.json automatically

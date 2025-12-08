@@ -52,7 +52,7 @@ jobs:
           zipUrl="https://github.com/NKU100/Zygisk-Il2CppDumper/releases/download/ci_release/zygisk-il2cppdumper-$moduleVersion-release.zip"
           sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$moduleVersion\"/" update.json
           sed -i "s/\(\"versionCode\": \)[0-9]*/\1$moduleVersionCode/" update.json
-          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" updateCI.json
+          sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
 
       - name: Update ci_release tag
         run: |

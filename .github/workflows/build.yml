@@ -112,6 +112,13 @@ jobs:
           files: out/zygisk-il2cppdumper-${{ github.ref_name }}-release.zip
           generate_release_notes: true
 
+      - name: Checkout master
+        run: |
+          git stash
+          git checkout master
+          git pull origin master
+          git stash pop
+
       - name: Update update.json
         run: |
           moduleVersion=${{ github.ref_name }}
@@ -120,13 +127,6 @@ jobs:
           sed -i "s/\(\"version\": \)\"[^\"]*\"/\1\"$moduleVersion\"/" update.json
           sed -i "s/\(\"versionCode\": \)[0-9]*/\1$moduleVersionCode/" update.json
           sed -i "s@\(\"zipUrl\": \)\"[^\"]*\"@\1\"$zipUrl\"@" update.json
-
-      - name: Checkout master
-        run: |
-          git stash
-          git checkout master
-          git pull origin master
-          git stash pop
 
       - name: Auto commit
         uses: stefanzweifel/git-auto-commit-action@v7

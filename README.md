@@ -1,5 +1,5 @@
 # Zygisk-Il2CppDumper
-Il2CppDumper with Zygisk, dump il2cpp data at runtime, can bypass protection, encryption and obfuscation.
+Il2CppDumper with Zygisk, dump il2cpp data at runtime, can bypass protection, encryption and obfuscation
 
 中文说明请戳[这里](README.zh-CN.md)
 

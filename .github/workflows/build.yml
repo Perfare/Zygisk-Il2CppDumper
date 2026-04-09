@@ -15,6 +15,7 @@ jobs:
       with:
         distribution: temurin
         java-version: 11
+        cache: gradle
     - run: |
         chmod +x ./gradlew
         sed -i 's/moduleDescription = "/moduleDescription = "(${{ github.event.inputs.package_name }}) /g' module.gradle

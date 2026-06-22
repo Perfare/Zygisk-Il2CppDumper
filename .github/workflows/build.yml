@@ -25,3 +25,4 @@ jobs:
       with:
         name: zygisk-il2cppdumper
         path: out/magisk_module_release/
+

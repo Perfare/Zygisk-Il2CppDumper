@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
       inputs:
         package_name:
-          description: "Package name of the game:"
+          description: "com.sgs.urb.versuspixels"
           required: true
 
 jobs:

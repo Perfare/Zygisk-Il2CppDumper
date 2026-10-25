@@ -33,10 +33,18 @@ include_directories(
 
 aux_source_directory(xdl xdl-src)
 
+# And64InlineHook is arm64 only
+set(HOOK_LIB_SRC "")
+if (ANDROID_ABI STREQUAL "arm64-v8a")
+    set(HOOK_LIB_SRC And64InlineHook.cpp)
+endif ()
+
 add_library(${MODULE_NAME} SHARED
         main.cpp
         hack.cpp
+        hook.cpp
         il2cpp_dump.cpp
+        ${HOOK_LIB_SRC}
         ${xdl-src})
 target_link_libraries(${MODULE_NAME} log)
 

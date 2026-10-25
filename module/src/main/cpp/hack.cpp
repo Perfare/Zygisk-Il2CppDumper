@@ -17,6 +17,8 @@
 #include <linux/unistd.h>
 #include <array>
 
+void hook_start(void *handle);
+
 void hack_start(const char *game_data_dir) {
     bool load = false;
     for (int i = 0; i < 10; i++) {
@@ -24,7 +26,7 @@ void hack_start(const char *game_data_dir) {
         if (handle) {
             load = true;
             il2cpp_api_init(handle);
-            il2cpp_dump(game_data_dir);
+            hook_start(handle);
             break;
         } else {
             sleep(1);

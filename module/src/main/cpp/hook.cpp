@@ -23,7 +23,7 @@ extern "C" void A64HookFunction(void *symbol, void *replace, void **result);
 //                  at startup, restart the game after editing).
 //                  Missing file or unlisted name = enabled.
 //   sk_cd.txt    : cooldown factor 0.0 - 1.0 (re-read every second).
-//   Names: hp shield delaydead mall gem energy cooldown items dizzy
+//   Names: hp shield delaydead mall gem energy cooldown items
 //          seasoncoin autoattack crit shop goldarmor
 //          unlocksave
 // ---------------------------------------------------------
@@ -295,18 +295,6 @@ static void consumefishcount_hook(void *self, int count, int obtainType, bool sa
 }
 
 // ---------------------------------------------------------
-// 8. No Dizzy (DamageCarrierHelper.ProcessPlayerDizzy)
-// ---------------------------------------------------------
-typedef float (*ProcessPlayerDizzy_t)(void *controller, float dizzyTime, void *buff, void *mi);
-static ProcessPlayerDizzy_t g_processplayerdizzy_orig;
-
-static float processplayerdizzy_hook(void *controller, float dizzyTime, void *buff, void *mi) {
-    static int logged = 0;
-    if (logged < 20) { logged++; LOGI("ProcessPlayerDizzy blocked: dizzyTime=%.2f", dizzyTime); }
-    return 0.0f;
-}
-
-// ---------------------------------------------------------
 // 9. Season Coin: No Deduct + Always Affordable
 // ---------------------------------------------------------
 typedef void (*DoConsumeSeasonCoin_t)(void *self, void *mi);
@@ -546,9 +534,12 @@ static int getmaxarmor_hook(void *self, void *mi) {
 // 14. Unlock heroes, skins, skills by the game's own setters (unlocksave)
 //   Once per launch, right before the first ChooseHeroModel.OnShow, the game's
 //   DataUtil.SetHeroUnlock / SetSkinUnlock / SetSkillUnlock are called for every
-//   hero, skin and skill, then RGSaveManager.SaveGameData(). The unlocks then
-//   live in the save like bought ones; no accessor is hooked any more.
-//   While that bulk call runs, g_bulk silences the two telemetry calls
+//   hero, skin and skill that the game's own getter (DataUtil.GetHeroUnlock /
+//   GetSkinUnlock / GetSkillUnlock) does not already report as unlocked, then
+//   RGSaveManager.SaveGameData() (only if something was set). A getter that is
+//   missing or does not return Boolean is not used: that group then calls the
+//   setter for every entry.
+//   While the bulk call runs, g_bulk silences the two telemetry calls
 //   (CommonStatistics.ReportClickUnlock, YearReviewManager.RecordDataIncrementInt)
 //   and MapManagerHall's HeroUnlockEvent handler (it can start guides).
 // ---------------------------------------------------------
@@ -573,6 +564,13 @@ typedef void (*SetSkillUnlock_t)(int hero, int skill, bool unlock, bool ignoreTr
 static SetHeroUnlock_t  g_sethero  = nullptr;  static void *g_sethero_mi  = nullptr;
 static SetSkinUnlock_t  g_setskin  = nullptr;  static void *g_setskin_mi  = nullptr;
 static SetSkillUnlock_t g_setskill = nullptr;  static void *g_setskill_mi = nullptr;
+
+typedef bool (*GetHeroUnlock_t)(int hero, void *mi);
+typedef bool (*GetSkinUnlock_t)(int hero, int skin, void *mi);
+typedef bool (*GetSkillUnlock_t)(int hero, int skill, void *mi);
+static GetHeroUnlock_t  g_gethero  = nullptr;  static void *g_gethero_mi  = nullptr;
+static GetSkinUnlock_t  g_getskin  = nullptr;  static void *g_getskin_mi  = nullptr;
+static GetSkillUnlock_t g_getskill = nullptr;  static void *g_getskill_mi = nullptr;
 
 static volatile bool g_bulk = false;
 struct BulkGuard {
@@ -612,20 +610,26 @@ static void do_unlock_all() {
     if (n <= 0 || n > 4096) return;   // save not loaded yet: retry on the next OnShow
     g_unlock_running = true;
     g_unlock_done = true;
-    int nh = 0, ns = 0, nk = 0;
+    int nh = 0, ns = 0, nk = 0;       // set
+    int sh = 0, ss = 0, sk = 0;       // skipped (already unlocked)
     {
         BulkGuard guard;
         for (int h = 0; h < n; h++) {
             char *e = *(char **) (arr + 0x20 + (size_t) h * 8);
             if (!e) continue;
-            g_sethero(h, true, g_sethero_mi);
-            nh++;
+            if (g_gethero && g_gethero(h, g_gethero_mi)) {
+                sh++;
+            } else {
+                g_sethero(h, true, g_sethero_mi);
+                nh++;
+            }
             char *sl = *(char **) (e + g_off_skinlist);
             int len = sl ? *(int *) (sl + 0x18) : 0;
             if (len > 0 && len <= 4096) {
                 for (int k = 0; k < len; k++) {
                     int v = *(int *) (sl + 0x20 + (size_t) k * 4);
                     if (v == SKIN_HIDDEN_A || v == SKIN_HIDDEN_B) continue;
+                    if (g_getskin && g_getskin(h, k, g_getskin_mi)) { ss++; continue; }
                     g_setskin(h, k, true, false, g_setskin_mi);
                     ns++;
                 }
@@ -633,14 +637,16 @@ static void do_unlock_all() {
             int sc = *(int *) (e + g_off_skillcount);
             if (sc > 0 && sc <= 64) {
                 for (int k = 0; k < sc; k++) {
+                    if (g_getskill && g_getskill(h, k, g_getskill_mi)) { sk++; continue; }
                     g_setskill(h, k, true, true, g_setskill_mi);
                     nk++;
                 }
             }
         }
     }
-    if (g_savegame) g_savegame(inst, g_savegame_mi);
-    LOGI("unlocksave: heroes=%d skins=%d skills=%d saved=%d", nh, ns, nk, (int) (g_savegame != nullptr));
+    int saved = 0;
+    if ((nh + ns + nk) > 0 && g_savegame) { g_savegame(inst, g_savegame_mi); saved = 1; }
+    LOGI("unlocksave: heroes=%d skins=%d skills=%d skipped=%d/%d/%d saved=%d", nh, ns, nk, sh, ss, sk, saved);
     g_unlock_running = false;
 }
 
@@ -769,6 +775,16 @@ static uintptr_t iter_method_addr(void *img, const char *cls, const char *m) {
     return 0;
 }
 
+// Resolve a static Boolean getter; returns the MethodInfo or null (getter then unused).
+static void *resolve_bool_getter(void *klass, const char *m, int argc) {
+    void *mi = klass ? method_by_name(klass, m, argc) : nullptr;
+    if (!mi || !*(void **) mi) { LOGE("unlocksave: getter %s(%d) not found, not used", m, argc); return nullptr; }
+    if (!method_ret_type || !type_get_type) { LOGE("unlocksave: getter %s not used, return-type API missing", m); return nullptr; }
+    int rt = type_get_type(method_ret_type(mi));
+    if (rt != IL2CPP_TYPE_BOOLEAN) { LOGE("unlocksave: getter %s not used, return type 0x%x", m, rt); return nullptr; }
+    return mi;
+}
+
 static void install(void *h) {
 #define S(n) xdl_sym(h, n, nullptr)
     auto is_vm           = (bool  (*)(void *))              S("il2cpp_is_vm_thread");
@@ -858,6 +874,16 @@ static void install(void *h) {
         if (lmi && *(void **) lmi) { g_setskill = (SetSkillUnlock_t) *(void **) lmi; g_setskill_mi = lmi; }
         LOGI("unlocksave: get_Inst=%p SaveGameData=%p SetHero=%p SetSkin=%p SetSkill=%p",
              (void *) g_getinst, (void *) g_savegame, (void *) g_sethero, (void *) g_setskin, (void *) g_setskill);
+
+        void *ghm = resolve_bool_getter(dk, "GetHeroUnlock", 1);
+        void *gkm = resolve_bool_getter(dk, "GetSkinUnlock", 2);
+        void *glm = resolve_bool_getter(dk, "GetSkillUnlock", 2);
+        if (ghm) { g_gethero  = (GetHeroUnlock_t)  *(void **) ghm; g_gethero_mi  = ghm; }
+        if (gkm) { g_getskin  = (GetSkinUnlock_t)  *(void **) gkm; g_getskin_mi  = gkm; }
+        if (glm) { g_getskill = (GetSkillUnlock_t) *(void **) glm; g_getskill_mi = glm; }
+        LOGI("unlocksave: GetHero=%p GetSkin=%p GetSkill=%p (null = group not skipped)",
+             (void *) g_gethero, (void *) g_getskin, (void *) g_getskill);
+
         if (!g_getinst || !g_sethero || !g_setskin || !g_setskill) {
             LOGE("unlocksave: a required function is missing, skipped");
         } else {
@@ -955,10 +981,6 @@ static void install(void *h) {
         hook(image, "", "ItemData", "ConsumeFishCount", 3,
              (void *) consumefishcount_hook, (void **) &g_consumefishcount_orig);
     }
-
-    if (on("dizzy"))
-        hook(image, "", "DamageCarrierHelper", "ProcessPlayerDizzy", 3,
-             (void *) processplayerdizzy_hook, (void **) &g_processplayerdizzy_orig);
 
     if (on("seasoncoin")) {
         hook(image, "RGScript.UI", "WindowBuyOrWatchAdDialog", "DoConsumeSeasonCoin", 0,

@@ -25,7 +25,7 @@ extern "C" void A64HookFunction(void *symbol, void *replace, void **result);
 //   sk_cd.txt    : cooldown factor 0.0 - 1.0 (re-read every second).
 //   Names: hp shield delaydead mall gem energy cooldown items
 //          seasoncoin autoattack crit shop goldarmor
-//          unlocksave
+//          unlocksave fly
 // ---------------------------------------------------------
 #define CFG_DIR "/storage/emulated/0/Android/data/com.ChillyRoom.DungeonShooter/files/"
 
@@ -658,6 +658,54 @@ static void onshow_hook(void *self, void *extra, void *mi) {
 }
 
 // ---------------------------------------------------------
+// 14b. Permanent flight on the local player (fly)
+//   The game's own RGController.SetFlyable(flag, true, false, false, false)
+//   (the call FlyMountController.DoFlyAfterMount and UIWindowSandbox.OnClick_Fly
+//   make) is called with our own flag string after RGController.OnRoomEnter and
+//   RGController.OnStartGame (both dungeon-only), only if IsLocalPlayer() and
+//   only while RGBaseController.isFly is false. The flag is a key in the hero's
+//   _flyFlags HashSet, so it does not clash with skill or mount flags. The hero
+//   is destroyed and rebuilt on a level change (OnEnterNextLevel), so this runs
+//   again every level.
+// ---------------------------------------------------------
+static int g_off_isfly = 0x102;   // RGBaseController.isFly
+
+typedef void (*SetFlyable_t)(void *self, void *flag, bool isFlyable, bool changeSortingOrder,
+                             bool ignoreLandFromAir, bool keepRunAnimation, void *mi);
+typedef bool (*IsLocalPlayer_t)(void *self, void *mi);
+static SetFlyable_t    g_setflyable = nullptr;  static void *g_setflyable_mi = nullptr;
+static IsLocalPlayer_t g_islocal    = nullptr;  static void *g_islocal_mi    = nullptr;
+static void *g_flyflag = nullptr;
+
+static void fly_apply(void *self, int site) {
+    static int n_skip[2], n_app[2];
+    if (!self || !g_setflyable || !g_islocal || !g_flyflag) return;
+    if (!g_islocal(self, g_islocal_mi)) return;
+    bool before = *(volatile uint8_t *) ((char *) self + g_off_isfly) != 0;
+    if (before) {
+        if (n_skip[site] < 5) { n_skip[site]++; LOGI("fly: site %d, local player already flying, skipped", site); }
+        return;
+    }
+    g_setflyable(self, g_flyflag, true, false, false, false, g_setflyable_mi);
+    bool after = *(volatile uint8_t *) ((char *) self + g_off_isfly) != 0;
+    if (n_app[site] < 5) { n_app[site]++; LOGI("fly: site %d applied, isFly 0 -> %d", site, (int) after); }
+}
+
+typedef void (*FlyEv_t)(void *self, void *ev, void *mi);
+static FlyEv_t g_flyroom_orig;
+static FlyEv_t g_flystart_orig;
+
+static void flyroom_hook(void *self, void *ev, void *mi) {
+    g_flyroom_orig(self, ev, mi);
+    fly_apply(self, 0);
+}
+
+static void flystart_hook(void *self, void *ev, void *mi) {
+    g_flystart_orig(self, ev, mi);
+    fly_apply(self, 1);
+}
+
+// ---------------------------------------------------------
 // 15. Installer
 // ---------------------------------------------------------
 typedef void *(*ClassFromName_t)(void *, const char *, const char *);
@@ -805,6 +853,8 @@ static void install(void *h) {
     class_get_ns         = (const char *(*)(void *))        S("il2cpp_class_get_namespace");
     class_get_field      = (void *(*)(void *, const char *)) S("il2cpp_class_get_field_from_name");
     field_get_offset     = (int (*)(void *))                S("il2cpp_field_get_offset");
+    auto string_new      = (void *(*)(const char *))        S("il2cpp_string_new");
+    auto gchandle_new    = (uint32_t (*)(void *, bool))     S("il2cpp_gchandle_new");
     asm_get_image        = get_image;
     img_get_name         = image_name;
 #undef S
@@ -905,6 +955,34 @@ static void install(void *h) {
                 LOGI("unlocksave: OnShow hook installed @%p", (void *) os);
 #endif
             }
+        }
+    }
+
+    if (on("fly")) {
+        g_off_isfly = resolve_off(image, "RGBaseController", "isFly", g_off_isfly);
+        void *rk = find_class(image, "RGController");
+        void *fmi = rk ? method_by_name(rk, "SetFlyable", 5) : nullptr;
+        void *lmi = rk ? method_by_name(rk, "IsLocalPlayer", 0) : nullptr;
+        bool lbool = false;
+        if (lmi && *(void **) lmi && method_ret_type && type_get_type)
+            lbool = type_get_type(method_ret_type(lmi)) == IL2CPP_TYPE_BOOLEAN;
+        if (fmi && *(void **) fmi) { g_setflyable = (SetFlyable_t) *(void **) fmi; g_setflyable_mi = fmi; }
+        if (lmi && *(void **) lmi && lbool) { g_islocal = (IsLocalPlayer_t) *(void **) lmi; g_islocal_mi = lmi; }
+        if (string_new && gchandle_new) {
+            g_flyflag = string_new("dsfly");
+            if (g_flyflag) gchandle_new(g_flyflag, true);
+        }
+        LOGI("fly: SetFlyable=%p IsLocalPlayer=%p flag=%p isFly off=0x%x",
+             (void *) g_setflyable, (void *) g_islocal, g_flyflag, g_off_isfly);
+        if (!g_setflyable || !g_islocal || !g_flyflag) {
+            LOGE("fly: a required function is missing, skipped");
+        } else {
+            bool f1 = hook(image, "", "RGController", "OnRoomEnter", 1,
+                           (void *) flyroom_hook, (void **) &g_flyroom_orig);
+            bool f2 = hook(image, "", "RGController", "OnStartGame", 1,
+                           (void *) flystart_hook, (void **) &g_flystart_orig);
+            if (!f1 && !f2) LOGE("fly: no trigger hook installed, flight will never be applied");
+            else if (!f1 || !f2) LOGE("fly: only one trigger hook installed (OnRoomEnter=%d OnStartGame=%d)", (int) f1, (int) f2);
         }
     }
 

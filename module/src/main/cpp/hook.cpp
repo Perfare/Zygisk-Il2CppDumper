@@ -576,6 +576,57 @@ static GetHeroUnlock_t  g_gethero  = nullptr;  static void *g_gethero_mi  = null
 static GetSkinUnlock_t  g_getskin  = nullptr;  static void *g_getskin_mi  = nullptr;
 static GetSkillUnlock_t g_getskill = nullptr;  static void *g_getskill_mi = nullptr;
 
+// Skill count the hero select screen uses: RGController.get_skills() calls
+// SkillConfigLoader.GetSkillInfoList(hero), a plain indexer on the static
+// dictionary _skillInfoDict (it THROWS if the key is missing). So the key is
+// checked first with the dictionary's own ContainsKey, and the list size is read
+// only for present keys. Any missing piece -> -1 (bound stays the save skillCount).
+typedef void *(*SLGetList_t)(int id, void *mi);
+typedef bool (*DictHasKey_t)(void *dict, int key, void *mi);
+static SLGetList_t g_sl_getlist = nullptr;  static void *g_sl_getlist_mi = nullptr;
+static void *g_sl_dictfield = nullptr;
+static void (*g_sl_static_get)(void *, void *) = nullptr;
+static void *(*g_sl_obj_class)(void *) = nullptr;
+static void *(*g_sl_cls_method)(void *, const char *, int) = nullptr;
+static void *(*g_sl_cls_field)(void *, const char *) = nullptr;
+static int (*g_sl_fld_off)(void *) = nullptr;
+static int g_sl_size_off = -1;
+
+static int skill_list_count(int h) {
+    static DictHasKey_t has = nullptr;
+    static void *has_mi = nullptr;
+    static bool tried = false;
+    static bool nodict_logged = false;
+    if (!g_sl_getlist || !g_sl_dictfield || !g_sl_static_get || !g_sl_obj_class || !g_sl_cls_method) return -1;
+    void *dict = nullptr;
+    g_sl_static_get(g_sl_dictfield, &dict);
+    if (!dict) {
+        if (!nodict_logged) { nodict_logged = true; LOGE("unlocksave: SkillConfigLoader._skillInfoDict is null, list bound unavailable"); }
+        return -1;
+    }
+    if (!tried) {
+        tried = true;
+        void *k = g_sl_obj_class(dict);
+        void *mi = k ? g_sl_cls_method(k, "ContainsKey", 1) : nullptr;
+        if (mi && *(void **) mi) { has = (DictHasKey_t) *(void **) mi; has_mi = mi; }
+        LOGI("unlocksave: skill list: dict=%p ContainsKey=%p GetSkillInfoList=%p", dict, (void *) has, (void *) g_sl_getlist);
+        if (!has) LOGE("unlocksave: Dictionary.ContainsKey not callable, GetSkillInfoList is NOT used (it throws on a missing key)");
+    }
+    if (!has) return -1;
+    if (!has(dict, h, has_mi)) return 0;
+    void *list = g_sl_getlist(h, g_sl_getlist_mi);
+    if (!list) return -1;
+    if (g_sl_size_off < 0) {
+        void *lk = g_sl_obj_class(list);
+        void *f = (lk && g_sl_cls_field) ? g_sl_cls_field(lk, "_size") : nullptr;
+        int off = (f && g_sl_fld_off) ? g_sl_fld_off(f) : -1;
+        g_sl_size_off = (off > 0 && off < 0x40) ? off : 0x18;
+        LOGI("unlocksave: List._size offset 0x%x (%s)", g_sl_size_off, (off > 0 && off < 0x40) ? "by name" : "fallback");
+    }
+    int n = *(int *) ((char *) list + g_sl_size_off);
+    return (n >= 0 && n <= 64) ? n : -1;
+}
+
 static volatile bool g_bulk = false;
 struct BulkGuard {
     BulkGuard() { g_bulk = true; }
@@ -616,6 +667,7 @@ static void do_unlock_all() {
     g_unlock_done = true;
     int nh = 0, ns = 0, nk = 0;       // set
     int sh = 0, ss = 0, sk = 0;       // skipped (already unlocked)
+    int n_diff = 0;
     {
         BulkGuard guard;
         for (int h = 0; h < n; h++) {
@@ -639,6 +691,11 @@ static void do_unlock_all() {
                 }
             }
             int sc = *(int *) (e + g_off_skillcount);
+            {
+                int cl = skill_list_count(h);
+                if (cl >= 0 && cl != sc && n_diff < 40) { n_diff++; LOGI("unlocksave: hero %d save skillCount=%d, game skill list=%d", h, sc, cl); }
+                if (cl > sc) sc = cl;
+            }
             if (sc > 0 && sc <= 64) {
                 for (int k = 0; k < sc; k++) {
                     if (g_getskill && g_getskill(h, k, g_getskill_mi)) { sk++; continue; }
@@ -982,6 +1039,8 @@ static void install(void *h) {
     g_gc_new             = gchandle_new;
     g_gc_target          = (void *(*)(uint32_t))            S("il2cpp_gchandle_get_target");
     g_gc_free            = (void (*)(uint32_t))             S("il2cpp_gchandle_free");
+    g_sl_static_get      = (void (*)(void *, void *))       S("il2cpp_field_static_get_value");
+    g_sl_obj_class       = (void *(*)(void *))              S("il2cpp_object_get_class");
     asm_get_image        = get_image;
     img_get_name         = image_name;
 #undef S
@@ -1058,6 +1117,17 @@ static void install(void *h) {
         if (ghm) { g_gethero  = (GetHeroUnlock_t)  *(void **) ghm; g_gethero_mi  = ghm; }
         if (gkm) { g_getskin  = (GetSkinUnlock_t)  *(void **) gkm; g_getskin_mi  = gkm; }
         if (glm) { g_getskill = (GetSkillUnlock_t) *(void **) glm; g_getskill_mi = glm; }
+        {
+            void *ck = find_class(image, "SkillConfigLoader");
+            void *lmi2 = ck ? method_by_name(ck, "GetSkillInfoList", 1) : nullptr;
+            if (lmi2 && *(void **) lmi2) { g_sl_getlist = (SLGetList_t) *(void **) lmi2; g_sl_getlist_mi = lmi2; }
+            g_sl_dictfield = (ck && class_get_field) ? class_get_field(ck, "_skillInfoDict") : nullptr;
+            g_sl_cls_method = method_by_name;
+            g_sl_cls_field  = class_get_field;
+            g_sl_fld_off    = field_get_offset;
+            LOGI("unlocksave: SkillConfigLoader GetSkillInfoList=%p _skillInfoDict field=%p static_get=%p obj_class=%p",
+                 (void *) g_sl_getlist, g_sl_dictfield, (void *) g_sl_static_get, (void *) g_sl_obj_class);
+        }
         LOGI("unlocksave: GetHero=%p GetSkin=%p GetSkill=%p (null = group not skipped)",
              (void *) g_gethero, (void *) g_getskin, (void *) g_getskill);
 

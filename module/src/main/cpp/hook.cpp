@@ -25,7 +25,9 @@ extern "C" void A64HookFunction(void *symbol, void *replace, void **result);
 //   sk_cd.txt    : cooldown factor 0.0 - 1.0 (re-read every second).
 //   Names: hp shield delaydead mall gem energy cooldown items
 //          seasoncoin autoattack crit shop goldarmor
-//          unlocksave fly
+//          unlocksave fly fullauto
+//   fullauto replaces autoattack: when fullauto installs, the old
+//   autoattack hooks are not installed.
 // ---------------------------------------------------------
 #define CFG_DIR "/storage/emulated/0/Android/data/com.ChillyRoom.DungeonShooter/files/"
 
@@ -321,6 +323,8 @@ static bool isaffordable_hook(void *self, void *mi) {
 
 // ---------------------------------------------------------
 // 10. get_AutoAttack: true while in battle (RGWeapon)
+//   OLD design (flag forcing). Superseded by section 14c (fullauto); only
+//   installed when fullauto is off or failed to install.
 // ---------------------------------------------------------
 typedef bool (*GetAutoAttack_t)(void *self, void *mi);
 static GetAutoAttack_t g_autoattack_orig[2];
@@ -706,6 +710,98 @@ static void flystart_hook(void *self, void *ev, void *mi) {
 }
 
 // ---------------------------------------------------------
+// 14c. Fully automatic attack (fullauto): copy of the game's own
+//   "Fully Automatic Device" (WeaponAffixLevelAuto.Update, decoded from live
+//   code, no guessing). The device registers a per-frame command that does:
+//       X = weapon.controller.target_obj          (Transform, the current target)
+//       if (X != null && !weapon.IsAutoAttack(tag)) weapon.SetAutoAttack(1.0f, 9999999f, tag)
+//       if (X == null &&  weapon.IsAutoAttack(tag)) weapon.StopAutoAttack(tag)
+//   SetAutoAttack starts RGWeapon.AutoAttacking as a coroutine on the weapon's
+//   controller; it keeps the attack held while the tag is in the weapon's
+//   _autoAttackTags set, and ends when StopAutoAttack removes the tag.
+//   Here the same is done from a hook on RGController.FixedUpdate (every hero
+//   controller override calls it), for the local player's front weapon only.
+//   Extra (not in the device): when the front weapon of a controller changes,
+//   the tag is removed from the previous front weapon (so it does not keep
+//   firing from the back) and from the new one (clears a stale tag).
+//   The target check is UnityEngine.Object.m_CachedPtr != 0 (what op_Inequality
+//   reads), offsets resolved by name.
+// ---------------------------------------------------------
+static const int IL2CPP_TYPE_VOID = 0x01;
+
+static int g_off_hand   = 0xa8;   // RGBaseController.hand (RGHand)
+static int g_off_target = 0x38;   // RGBaseController.target_obj (Transform)
+static int g_off_front  = 0x28;   // RGBaseHand.front_weapon (RGWeapon)
+static int g_off_cached = 0x10;   // UnityEngine.Object.m_CachedPtr
+
+typedef bool (*IsAuto_t)(void *weapon, void *tag, void *mi);
+typedef void (*SetAuto_t)(void *weapon, float speed, float duration, void *tag, void *mi);
+typedef void (*StopAuto_t)(void *weapon, void *tag, void *mi);
+static IsAuto_t  g_fa_isauto = nullptr;  static void *g_fa_isauto_mi = nullptr;
+static SetAuto_t g_fa_set    = nullptr;  static void *g_fa_set_mi    = nullptr;
+static StopAuto_t g_fa_stop  = nullptr;  static void *g_fa_stop_mi   = nullptr;
+static IsLocalPlayer_t g_fa_islocal = nullptr;  static void *g_fa_islocal_mi = nullptr;
+static void *g_fa_tag = nullptr;
+static const float FA_DURATION = 9999999.0f;
+
+static uint32_t (*g_gc_new)(void *, bool) = nullptr;
+static void *(*g_gc_target)(uint32_t) = nullptr;
+static void (*g_gc_free)(uint32_t) = nullptr;
+
+struct FaRec { uintptr_t front; uint32_t h; };
+static std::map<uintptr_t, FaRec> g_fa_rec;
+
+static void fa_tick(void *self) {
+    static int n_arm = 0, n_stop = 0, n_sw = 0;
+    if (!self || !g_fa_isauto || !g_fa_set || !g_fa_stop || !g_fa_islocal || !g_fa_tag) return;
+    if (!g_fa_islocal(self, g_fa_islocal_mi)) return;
+    char *hand = *(char **) ((char *) self + g_off_hand);
+    if (!hand) return;
+    char *w = *(char **) (hand + g_off_front);
+    if (!w) return;
+
+    if (g_gc_new && g_gc_target && g_gc_free) {
+        if (g_fa_rec.size() > 64) {
+            for (auto &kv : g_fa_rec)
+                if (kv.second.h) g_gc_free(kv.second.h);
+            g_fa_rec.clear();
+        }
+        FaRec &r = g_fa_rec[(uintptr_t) self];
+        if (r.front != (uintptr_t) w) {
+            if (r.h) {
+                void *old = g_gc_target(r.h);
+                if (old && old != (void *) w) g_fa_stop(old, g_fa_tag, g_fa_stop_mi);
+                g_gc_free(r.h);
+                r.h = 0;
+            }
+            g_fa_stop(w, g_fa_tag, g_fa_stop_mi);
+            r.h = g_gc_new(w, false);
+            r.front = (uintptr_t) w;
+            if (n_sw < 10) { n_sw++; LOGI("fullauto: front weapon %p, previous tag cleared", (void *) w); }
+        }
+    }
+
+    char *tr = *(char **) ((char *) self + g_off_target);
+    bool has = tr && *(void **) (tr + g_off_cached) != nullptr;
+    bool armed = g_fa_isauto(w, g_fa_tag, g_fa_isauto_mi);
+    if (has && !armed) {
+        g_fa_set(w, 1.0f, FA_DURATION, g_fa_tag, g_fa_set_mi);
+        if (n_arm < 10) { n_arm++; LOGI("fullauto: target present, SetAutoAttack on weapon %p, IsAutoAttack now %d", (void *) w, (int) g_fa_isauto(w, g_fa_tag, g_fa_isauto_mi)); }
+    } else if (!has && armed) {
+        g_fa_stop(w, g_fa_tag, g_fa_stop_mi);
+        if (n_stop < 10) { n_stop++; LOGI("fullauto: no target, StopAutoAttack on weapon %p", (void *) w); }
+    }
+}
+
+typedef void (*FixedUpdate_t)(void *self, void *mi);
+static FixedUpdate_t g_fa_orig = nullptr;
+
+static void fa_hook(void *self, void *mi) {
+    g_fa_orig(self, mi);
+    fa_tick(self);
+}
+
+// ---------------------------------------------------------
 // 15. Installer
 // ---------------------------------------------------------
 typedef void *(*ClassFromName_t)(void *, const char *, const char *);
@@ -833,6 +929,34 @@ static void *resolve_bool_getter(void *klass, const char *m, int argc) {
     return mi;
 }
 
+// fullauto: resolve an instance method by name and argument count, return type checked.
+static void *fa_method(void *klass, const char *cls, const char *m, int argc, int ret_type) {
+    void *mi = klass ? method_by_name(klass, m, argc) : nullptr;
+    if (!mi || !*(void **) mi) { LOGE("fullauto: %s.%s(%d) not found", cls, m, argc); return nullptr; }
+    if (!method_ret_type || !type_get_type) { LOGE("fullauto: %s.%s not used, return-type API missing", cls, m); return nullptr; }
+    int rt = type_get_type(method_ret_type(mi));
+    if (rt != ret_type) { LOGE("fullauto: %s.%s not used, return type 0x%x != 0x%x", cls, m, rt, ret_type); return nullptr; }
+    return mi;
+}
+
+// fullauto: UnityEngine.Object.m_CachedPtr offset, by name from the class in namespace UnityEngine.
+static int unity_cached_off(int fallback) {
+    if (!asm_get_image || !class_get_field || !field_get_offset) return fallback;
+    for (size_t i = 0; i < g_nasms; i++) {
+        void *im = asm_get_image(g_asms[i]);
+        void *k = im ? class_from_name(im, "UnityEngine", "Object") : nullptr;
+        if (!k) continue;
+        void *f = class_get_field(k, "m_CachedPtr");
+        int off = f ? field_get_offset(f) : -1;
+        if (off > 0 && off < 0x100) {
+            LOGI("field: UnityEngine.Object.m_CachedPtr offset 0x%x (by name, image %s)", off, img_get_name ? img_get_name(im) : "?");
+            return off;
+        }
+    }
+    LOGE("field: UnityEngine.Object.m_CachedPtr not found, keeping fallback 0x%x", fallback);
+    return fallback;
+}
+
 static void install(void *h) {
 #define S(n) xdl_sym(h, n, nullptr)
     auto is_vm           = (bool  (*)(void *))              S("il2cpp_is_vm_thread");
@@ -855,6 +979,9 @@ static void install(void *h) {
     field_get_offset     = (int (*)(void *))                S("il2cpp_field_get_offset");
     auto string_new      = (void *(*)(const char *))        S("il2cpp_string_new");
     auto gchandle_new    = (uint32_t (*)(void *, bool))     S("il2cpp_gchandle_new");
+    g_gc_new             = gchandle_new;
+    g_gc_target          = (void *(*)(uint32_t))            S("il2cpp_gchandle_get_target");
+    g_gc_free            = (void (*)(uint32_t))             S("il2cpp_gchandle_free");
     asm_get_image        = get_image;
     img_get_name         = image_name;
 #undef S
@@ -986,6 +1113,42 @@ static void install(void *h) {
         }
     }
 
+    bool fa_ok = false;
+    if (on("fullauto")) {
+        g_off_hand   = resolve_off(image, "RGBaseController", "hand", g_off_hand);
+        g_off_target = resolve_off(image, "RGBaseController", "target_obj", g_off_target);
+        g_off_front  = resolve_off(image, "RGBaseHand", "front_weapon", g_off_front);
+        g_off_cached = unity_cached_off(g_off_cached);
+        void *wk = find_class(image, "RGWeapon");
+        void *rk = find_class(image, "RGController");
+        void *m1 = fa_method(wk, "RGWeapon", "IsAutoAttack", 1, IL2CPP_TYPE_BOOLEAN);
+        void *m2 = fa_method(wk, "RGWeapon", "SetAutoAttack", 3, IL2CPP_TYPE_VOID);
+        void *m3 = fa_method(wk, "RGWeapon", "StopAutoAttack", 1, IL2CPP_TYPE_VOID);
+        void *m4 = fa_method(rk, "RGController", "IsLocalPlayer", 0, IL2CPP_TYPE_BOOLEAN);
+        if (m1) { g_fa_isauto = (IsAuto_t)   *(void **) m1; g_fa_isauto_mi = m1; }
+        if (m2) { g_fa_set    = (SetAuto_t)  *(void **) m2; g_fa_set_mi    = m2; }
+        if (m3) { g_fa_stop   = (StopAuto_t) *(void **) m3; g_fa_stop_mi   = m3; }
+        if (m4) { g_fa_islocal = (IsLocalPlayer_t) *(void **) m4; g_fa_islocal_mi = m4; }
+        if (string_new && gchandle_new) {
+            g_fa_tag = string_new("dsfullauto");
+            if (g_fa_tag) gchandle_new(g_fa_tag, true);
+        }
+        LOGI("fullauto: IsAutoAttack=%p SetAutoAttack=%p StopAutoAttack=%p IsLocalPlayer=%p tag=%p",
+             (void *) g_fa_isauto, (void *) g_fa_set, (void *) g_fa_stop, (void *) g_fa_islocal, g_fa_tag);
+        LOGI("fullauto: offsets hand=0x%x target_obj=0x%x front_weapon=0x%x m_CachedPtr=0x%x gc=%d/%d/%d",
+             g_off_hand, g_off_target, g_off_front, g_off_cached,
+             (int) (g_gc_new != nullptr), (int) (g_gc_target != nullptr), (int) (g_gc_free != nullptr));
+        if (!g_fa_isauto || !g_fa_set || !g_fa_stop || !g_fa_islocal || !g_fa_tag) {
+            LOGE("fullauto: a required function is missing, skipped");
+        } else {
+            if (!g_gc_new || !g_gc_target || !g_gc_free)
+                LOGE("fullauto: gchandle API missing, weapon-switch cleanup disabled");
+            fa_ok = hook(image, "", "RGController", "FixedUpdate", 0,
+                         (void *) fa_hook, (void **) &g_fa_orig);
+            if (!fa_ok) LOGE("fullauto: RGController.FixedUpdate hook failed, falling back to the old autoattack group");
+        }
+    }
+
     if (on("hp")) {
         const char *hurtnames[3] = {"RGController", "C12Controller", "C13Controller"};
         std::set<void *> done;
@@ -1069,7 +1232,9 @@ static void install(void *h) {
              (void *) isaffordable_hook, (void **) &g_isaffordable_orig);
     }
 
-    if (on("autoattack")) {
+    if (on("autoattack") && fa_ok) {
+        LOGI("autoattack: old flag hooks not installed (fullauto is active)");
+    } else if (on("autoattack")) {
         hook(image, "", "RGWeapon", "get_AutoAttack", 0,
              (void *) autoattack_hook<0>, (void **) &g_autoattack_orig[0]);
         hook(image, "", "RGWeapon", "get__autoAttack", 0,

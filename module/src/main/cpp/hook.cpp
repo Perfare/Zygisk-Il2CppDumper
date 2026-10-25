@@ -25,7 +25,7 @@ extern "C" void A64HookFunction(void *symbol, void *replace, void **result);
 //   sk_cd.txt    : cooldown factor 0.0 - 1.0 (re-read every second).
 //   Names: hp shield delaydead mall gem energy cooldown items
 //          seasoncoin autoattack crit shop goldarmor
-//          unlocksave fly fullauto
+//          unlocksave fly fullauto trainpoints
 //   fullauto replaces autoattack: when fullauto installs, the old
 //   autoattack hooks are not installed.
 // ---------------------------------------------------------
@@ -616,13 +616,14 @@ static int skill_list_count(int h) {
     if (!has(dict, h, has_mi)) return 0;
     void *list = g_sl_getlist(h, g_sl_getlist_mi);
     if (!list) return -1;
-    if (g_sl_size_off < 0) {
+    if (g_sl_size_off == -1) {
         void *lk = g_sl_obj_class(list);
         void *f = (lk && g_sl_cls_field) ? g_sl_cls_field(lk, "_size") : nullptr;
         int off = (f && g_sl_fld_off) ? g_sl_fld_off(f) : -1;
-        g_sl_size_off = (off > 0 && off < 0x40) ? off : 0x18;
-        LOGI("unlocksave: List._size offset 0x%x (%s)", g_sl_size_off, (off > 0 && off < 0x40) ? "by name" : "fallback");
+        if (off > 0 && off < 0x40) { g_sl_size_off = off; LOGI("unlocksave: List._size offset 0x%x (by name)", off); }
+        else { g_sl_size_off = -2; LOGE("unlocksave: List._size not found, list bound unavailable"); }
     }
+    if (g_sl_size_off < 0) return -1;
     int n = *(int *) ((char *) list + g_sl_size_off);
     return (n >= 0 && n <= 64) ? n : -1;
 }
@@ -859,6 +860,44 @@ static void fa_hook(void *self, void *mi) {
 }
 
 // ---------------------------------------------------------
+// 14d. Training Points (Training Supply Store = BattlePassShopData): trainpoints
+//   BattlePassShopData.TryBuy, decoded from live code:
+//     if (totalCost > get_CurrentPoints()) -> Fail(NotEnoughPoint)
+//     ItemData.ConsumeMaterial(points item, totalCost)   <- takes the points
+//     hasConsumedPoint = true; ... ItemUtility.AddGameItems(reward)
+//   1) The ConsumeMaterial call inside TryBuy is replaced by a nop. It is found
+//      by scanning TryBuy for a bl to any ItemData.ConsumeMaterial overload, so the
+//      group does not depend on the items group.
+//   2) get_CurrentPoints is hooked and returns at least BP_FREE_POINTS, but only
+//      for the callers that decide (TryBuy, GetMaxPurchaseCount, BuildSkinReward,
+//      BuildOtherReward, UIBpShopBuyWindow.RefreshConfirmPrice), recognised by the
+//      exact return address of their bl (found by scanning each function by name).
+//      The two currency-widget callers are not listed: the shown balance stays real.
+//   Step 2 is installed only if step 1 worked and the TryBuy site was found.
+// ---------------------------------------------------------
+static const int BP_FREE_POINTS = 100000000;
+static uintptr_t g_bp_ra[8];
+static int g_bp_hits[8];
+static int g_bp_n = 0;
+
+typedef int (*BpPoints_t)(void *self, void *mi);
+static BpPoints_t g_bp_orig = nullptr;
+
+__attribute__((noinline))
+static int bp_points_hook(void *self, void *mi) {
+    int r = g_bp_orig(self, mi);
+    uintptr_t ra = (uintptr_t) __builtin_return_address(0);
+    for (int i = 0; i < g_bp_n; i++) {
+        if (ra == g_bp_ra[i]) {
+            int v = r < BP_FREE_POINTS ? BP_FREE_POINTS : r;
+            if (g_bp_hits[i] < 3) { g_bp_hits[i]++; LOGI("trainpoints: CurrentPoints %d -> %d at site %d (ra=%p)", r, v, i, (void *) ra); }
+            return v;
+        }
+    }
+    return r;
+}
+
+// ---------------------------------------------------------
 // 15. Installer
 // ---------------------------------------------------------
 typedef void *(*ClassFromName_t)(void *, const char *, const char *);
@@ -941,14 +980,15 @@ static int resolve_off(void *img, const char *cls, const char *fld, int fallback
         else LOGI("field: %s.%s offset 0x%x (by name, CHANGED from old 0x%x)", cls, fld, off, fallback);
         return off;
     }
-    LOGE("field: %s.%s not found, keeping fallback 0x%x", cls, fld, fallback);
-    return fallback;
+    // No fallback: a wrong offset would read/write foreign memory. -1 = the group using it is skipped.
+    LOGE("field: %s.%s not found, dependent group will be skipped", cls, fld);
+    return -1;
 }
 
 static bool hook(void *img, const char *ns, const char *cls, const char *m, int argc,
                  void *repl, void **orig, int ret_type = -1) {
     void *k = class_from_name(img, ns, cls);
-    if (!k && !*ns) k = find_class(img, cls);
+    if (!k) k = find_class(img, cls);   // namespace moved by an update: scan by plain name
     if (!k) { LOGE("hook: class %s not found", cls); return false; }
     void *mi = method_by_name(k, m, argc);
     void *addr = mi ? *(void **) mi : nullptr;
@@ -998,7 +1038,7 @@ static void *fa_method(void *klass, const char *cls, const char *m, int argc, in
 
 // fullauto: UnityEngine.Object.m_CachedPtr offset, by name from the class in namespace UnityEngine.
 static int unity_cached_off(int fallback) {
-    if (!asm_get_image || !class_get_field || !field_get_offset) return fallback;
+    if (!asm_get_image || !class_get_field || !field_get_offset) return -1;
     for (size_t i = 0; i < g_nasms; i++) {
         void *im = asm_get_image(g_asms[i]);
         void *k = im ? class_from_name(im, "UnityEngine", "Object") : nullptr;
@@ -1010,8 +1050,95 @@ static int unity_cached_off(int fallback) {
             return off;
         }
     }
-    LOGE("field: UnityEngine.Object.m_CachedPtr not found, keeping fallback 0x%x", fallback);
-    return fallback;
+    LOGE("field: UnityEngine.Object.m_CachedPtr not found, dependent group will be skipped");
+    return -1;
+}
+
+// First bl in [fn+4, fn+maxoff) whose target is one of targets; returns its offset, 0 if none.
+static uintptr_t find_bl(uintptr_t fn, const uintptr_t *targets, int nt, uintptr_t maxoff) {
+    for (uintptr_t o = 4; o < maxoff; o += 4) {
+        uintptr_t t = bl_target(fn + o);
+        if (!t) continue;
+        for (int i = 0; i < nt; i++)
+            if (t == targets[i]) return o;
+    }
+    return 0;
+}
+
+// MethodInfo of the first method with this name, by iterating (no Class::Init, safe on UI classes).
+static void *iter_method_info(void *img, const char *cls, const char *m) {
+    void *k = find_class(img, cls);
+    if (!k || !class_get_methods || !method_get_name) return nullptr;
+    void *it = nullptr;
+    while (void *mi = class_get_methods(k, &it))
+        if (!strcmp(method_get_name(mi), m)) return mi;
+    return nullptr;
+}
+
+static void install_trainpoints(void *image) {
+    void *cpmi = iter_method_info(image, "BattlePassShopData", "get_CurrentPoints");
+    uintptr_t cp = cpmi ? (uintptr_t) *(void **) cpmi : 0;
+    if (!cp) { LOGE("trainpoints: BattlePassShopData.get_CurrentPoints not found, skipped"); return; }
+    if (!method_ret_type || !type_get_type || type_get_type(method_ret_type(cpmi)) != IL2CPP_TYPE_I4) {
+        LOGE("trainpoints: get_CurrentPoints does not return Int32 (or return-type API missing), skipped");
+        return;
+    }
+
+    uintptr_t cm[8];
+    int ncm = 0;
+    {
+        void *ik = find_class(image, "ItemData");
+        void *it = nullptr;
+        while (ik && class_get_methods && method_get_name) {
+            void *mi = class_get_methods(ik, &it);
+            if (!mi) break;
+            if (strcmp(method_get_name(mi), "ConsumeMaterial") != 0) continue;
+            uintptr_t a = (uintptr_t) *(void **) mi;
+            bool dup = false;
+            for (int i = 0; i < ncm; i++) if (cm[i] == a) dup = true;
+            if (a && !dup && ncm < 8) cm[ncm++] = a;
+        }
+    }
+    uintptr_t tb = iter_method_addr(image, "BattlePassShopData", "TryBuy");
+    LOGI("trainpoints: get_CurrentPoints=%p TryBuy=%p ConsumeMaterial overloads=%d", (void *) cp, (void *) tb, ncm);
+    if (!tb || !ncm) { LOGE("trainpoints: TryBuy or ItemData.ConsumeMaterial not found, skipped"); return; }
+
+    uintptr_t doff = find_bl(tb, cm, ncm, 0x800);
+    if (!doff) { LOGE("trainpoints: no ConsumeMaterial call found in TryBuy, skipped (points would really be deducted)"); return; }
+
+    static const PriceName sites[] = {
+        {"BattlePassShopData", "TryBuy"},
+        {"BattlePassShopData", "GetMaxPurchaseCount"},
+        {"BattlePassShopData", "BuildSkinReward"},
+        {"BattlePassShopData", "BuildOtherReward"},
+        {"UIBpShopBuyWindow",  "RefreshConfirmPrice"},
+    };
+    uintptr_t ras[8];
+    int nra = 0;
+    bool tb_site = false;
+    for (int s = 0; s < (int) (sizeof(sites) / sizeof(sites[0])); s++) {
+        uintptr_t fn = iter_method_addr(image, sites[s].cls, sites[s].m);
+        if (!fn) { LOGE("trainpoints: %s.%s not found", sites[s].cls, sites[s].m); continue; }
+        uintptr_t off = find_bl(fn, &cp, 1, 0x400);
+        if (!off) { LOGE("trainpoints: %s.%s has no get_CurrentPoints call", sites[s].cls, sites[s].m); continue; }
+        ras[nra] = fn + off + 4;
+        LOGI("trainpoints: site %d %s.%s: CurrentPoints call at +0x%x", nra, sites[s].cls, sites[s].m, (unsigned) off);
+        nra++;
+        if (s == 0) tb_site = true;
+    }
+    if (!tb_site) { LOGE("trainpoints: TryBuy site missing, skipped"); return; }
+
+    if (!patch_u32(tb + doff, 0xD503201Fu)) {
+        LOGE("trainpoints: could not patch the ConsumeMaterial call in TryBuy at +0x%x, skipped", (unsigned) doff);
+        return;
+    }
+    LOGI("trainpoints: TryBuy ConsumeMaterial call at +0x%x replaced by nop", (unsigned) doff);
+    for (int i = 0; i < nra; i++) g_bp_ra[i] = ras[i];
+    g_bp_n = nra;
+#if defined(__aarch64__)
+    A64HookFunction((void *) cp, (void *) bp_points_hook, (void **) &g_bp_orig);
+    LOGI("trainpoints: get_CurrentPoints @%p hooked, %d site(s)", (void *) cp, nra);
+#endif
 }
 
 static void install(void *h) {
@@ -1077,20 +1204,30 @@ static void install(void *h) {
         } else LOGE("InBattleState not found, autoattack falls back to always-true");
     }
 
+    bool mall_ok = false, energy_ok = false, crit_ok = false, coin_ok = false;
     if (on("mall")) {
         g_off_itemprice  = resolve_off(image, "MallItem", "itemPrice", g_off_itemprice);
         g_off_finalprice = resolve_off(image, "MallItem", "finalPrice", g_off_finalprice);
+        mall_ok = g_off_itemprice > 0 && g_off_finalprice > 0;
+        if (!mall_ok) LOGE("mall: field offset missing, group skipped");
     }
     if (on("energy")) {
         g_off_maxenergy = resolve_off(image, "RoleAttributePlayer", "max_energy", g_off_maxenergy);
         g_off_energy    = resolve_off(image, "RoleAttributePlayer", "_energy", g_off_energy);
+        energy_ok = g_off_maxenergy > 0 && g_off_energy > 0;
+        if (!energy_ok) LOGE("energy: field offset missing, group skipped");
     }
     if (on("crit")) {
         g_off_critical = resolve_off(image, "DamageTrigger", "critical", g_off_critical);
         g_off_camp     = resolve_off(image, "DamageTrigger", "camp", g_off_camp);
+        crit_ok = g_off_critical > 0 && g_off_camp > 0;
+        if (!crit_ok) LOGE("crit: field offset missing, HandleCritical hook skipped");
     }
-    if (on("goldarmor"))
+    if (on("goldarmor")) {
         g_off_curcoin = resolve_off(image, "CoinChangeEvent", "curCoinVal", g_off_curcoin);
+        coin_ok = g_off_curcoin > 0;
+        if (!coin_ok) LOGE("goldarmor: field offset missing, OnCoinChange hook skipped");
+    }
 
     if (on("unlocksave")) {
         g_off_charlist   = resolve_off(image, "RGSaveManager", "char_list", g_off_charlist);
@@ -1131,7 +1268,9 @@ static void install(void *h) {
         LOGI("unlocksave: GetHero=%p GetSkin=%p GetSkill=%p (null = group not skipped)",
              (void *) g_gethero, (void *) g_getskin, (void *) g_getskill);
 
-        if (!g_getinst || !g_sethero || !g_setskin || !g_setskill) {
+        if (g_off_charlist <= 0 || g_off_skinlist <= 0 || g_off_skillcount <= 0) {
+            LOGE("unlocksave: field offset missing, skipped");
+        } else if (!g_getinst || !g_sethero || !g_setskin || !g_setskill) {
             LOGE("unlocksave: a required function is missing, skipped");
         } else {
             bool t1 = hook(image, "", "CommonStatistics", "ReportClickUnlock", 5,
@@ -1171,8 +1310,8 @@ static void install(void *h) {
         }
         LOGI("fly: SetFlyable=%p IsLocalPlayer=%p flag=%p isFly off=0x%x",
              (void *) g_setflyable, (void *) g_islocal, g_flyflag, g_off_isfly);
-        if (!g_setflyable || !g_islocal || !g_flyflag) {
-            LOGE("fly: a required function is missing, skipped");
+        if (g_off_isfly <= 0 || !g_setflyable || !g_islocal || !g_flyflag) {
+            LOGE("fly: a required function or field is missing, skipped");
         } else {
             bool f1 = hook(image, "", "RGController", "OnRoomEnter", 1,
                            (void *) flyroom_hook, (void **) &g_flyroom_orig);
@@ -1208,8 +1347,9 @@ static void install(void *h) {
         LOGI("fullauto: offsets hand=0x%x target_obj=0x%x front_weapon=0x%x m_CachedPtr=0x%x gc=%d/%d/%d",
              g_off_hand, g_off_target, g_off_front, g_off_cached,
              (int) (g_gc_new != nullptr), (int) (g_gc_target != nullptr), (int) (g_gc_free != nullptr));
-        if (!g_fa_isauto || !g_fa_set || !g_fa_stop || !g_fa_islocal || !g_fa_tag) {
-            LOGE("fullauto: a required function is missing, skipped");
+        if (g_off_hand <= 0 || g_off_target <= 0 || g_off_front <= 0 || g_off_cached <= 0 ||
+            !g_fa_isauto || !g_fa_set || !g_fa_stop || !g_fa_islocal || !g_fa_tag) {
+            LOGE("fullauto: a required function or field is missing, skipped");
         } else {
             if (!g_gc_new || !g_gc_target || !g_gc_free)
                 LOGE("fullauto: gchandle API missing, weapon-switch cleanup disabled");
@@ -1224,7 +1364,7 @@ static void install(void *h) {
         std::set<void *> done;
         int slot = 0;
         for (auto nm : hurtnames) {
-            void *klass = class_from_name(image, "", nm);
+            void *klass = find_class(image, nm);
             if (!klass) { LOGE("hook: class %s not found", nm); continue; }
             void *mi = method_by_name(klass, "HurtHp", 2);
             if (!mi) { LOGE("hook: HurtHp not found in %s", nm); continue; }
@@ -1241,11 +1381,12 @@ static void install(void *h) {
     if (on("shield")) {
         void *vk = class_from_name(image, "TalentImpl", "BuffImplVoidShield");
         if (!vk) vk = find_class(image, "BuffImplVoidShield");
+        bool shield_ok = false;
         if (vk && class_get_field && field_get_offset) {
             void *fld = class_get_field(vk, "_shieldCount");
             int off = fld ? field_get_offset(fld) : -1;
-            if (off > 0 && off < 0x200) { g_shield_off = off; LOGI("shield: _shieldCount offset 0x%x (by name)", off); }
-            else LOGE("shield: _shieldCount field not found, using 0x%x", g_shield_off);
+            if (off > 0 && off < 0x200) { g_shield_off = off; shield_ok = true; LOGI("shield: _shieldCount offset 0x%x (by name)", off); }
+            else LOGE("shield: _shieldCount field not found, shield hook skipped");
         }
         void *smi = vk ? method_by_name(vk, "SaveShieldCount", 0) : nullptr;
         if (smi && *(void **) smi) {
@@ -1253,15 +1394,16 @@ static void install(void *h) {
             g_saveshield_mi = smi;
             LOGI("shield: SaveShieldCount resolved @%p", (void *) g_saveshield);
         } else LOGE("shield: SaveShieldCount not found, count will not persist");
-        hook(image, "TalentImpl", "BuffImplVoidShield", "OnBeforePlayerConsumeVoidShield", 1,
-             (void *) consume_hook, (void **) &g_consume_orig);
+        if (shield_ok)
+            hook(image, "TalentImpl", "BuffImplVoidShield", "OnBeforePlayerConsumeVoidShield", 1,
+                 (void *) consume_hook, (void **) &g_consume_orig);
     }
 
     if (on("delaydead"))
         hook(image, "TalentImpl", "BuffImplVoidShield", "AddDelayDeadBuff", 1,
              (void *) adddead_hook, (void **) &g_adddead_orig);
 
-    if (on("mall")) {
+    if (on("mall") && mall_ok) {
         hook(image, "RGScript.Data.Mall", "MallData", "BuyItem", 2,
              (void *) buyitem_hook, (void **) &g_buyitem_orig);
         hook(image, "RGScript.Data.Mall", "MallData", "HasEnoughCurrency", 1,
@@ -1272,7 +1414,7 @@ static void install(void *h) {
         hook(image, "", "RGSaveManager", "ConsumeGem", 3,
              (void *) consumegem_hook, (void **) &g_consumegem_orig);
 
-    if (on("energy"))
+    if (on("energy") && energy_ok)
         hook(image, "", "RoleAttributePlayer", "set_energy", 1,
              (void *) setenergy_hook, (void **) &g_setenergy_orig);
 
@@ -1302,6 +1444,8 @@ static void install(void *h) {
              (void *) isaffordable_hook, (void **) &g_isaffordable_orig);
     }
 
+    if (on("trainpoints")) install_trainpoints(image);
+
     if (on("autoattack") && fa_ok) {
         LOGI("autoattack: old flag hooks not installed (fullauto is active)");
     } else if (on("autoattack")) {
@@ -1316,7 +1460,7 @@ static void install(void *h) {
     }
 
     if (on("crit")) {
-        hook(image, "", "DamageTrigger", "HandleCritical", 0,
+        if (crit_ok) hook(image, "", "DamageTrigger", "HandleCritical", 0,
              (void *) handlecrit_hook, (void **) &g_handlecrit_orig);
         hook(image, "", "DamageCarrierHelper", "DealDamage", 11,
              (void *) dealdamage_hook, (void **) &g_dealdamage_orig);
@@ -1355,7 +1499,7 @@ static void install(void *h) {
     }
 
     if (on("goldarmor")) {
-        hook(image, "", "RoleAttributePlayer", "OnCoinChange", 1,
+        if (coin_ok) hook(image, "", "RoleAttributePlayer", "OnCoinChange", 1,
              (void *) oncoin_hook, (void **) &g_oncoin_orig);
         hook(image, "", "RoleAttributePlayer", "UpdateArmor", 1,
              (void *) updarmor_hook, (void **) &g_updarmor_orig);

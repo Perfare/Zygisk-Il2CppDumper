@@ -2,8 +2,8 @@ name: Build
 on:
   workflow_dispatch:
       inputs:
-        package_name:
-          description: "Package name of the game:"
+        package_name:"com.dts.freefireth:"
+          description: "com.dts.freefireth:"
           required: true
 
 jobs:
@@ -25,3 +25,4 @@ jobs:
       with:
         name: zygisk-il2cppdumper
         path: out/magisk_module_release/
+        
